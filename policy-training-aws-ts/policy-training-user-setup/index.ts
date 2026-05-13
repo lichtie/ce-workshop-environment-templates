@@ -28,9 +28,6 @@ const awsEscEnvironmentName = workshopStack
 const participantTeamName = workshopStack
   .getOutput("participantTeamNameOut")
   .apply((v) => String(v));
-const awsRoleArn = workshopStack
-  .getOutput("awsRoleArnOut")
-  .apply((v) => String(v));
 
 // Override the GitLab project ID if it differs from the workshop stack output
 const gitlabProjectIdOverride = config.get("existingGitlabProjectId");
@@ -55,13 +52,7 @@ const gitlabUserId = config.getNumber("gitlabUserId");
 // and project names in Pulumi Cloud.
 // =============================================================================
 
-const projectSlugs = [
-  "s3-website",
-  "lambda-api",
-  "rds-database",
-  "ec2-instance",
-  "iam-policies",
-];
+const projectSlugs = ["s3-website", "rds-database", "ec2-instance", "waf-config"];
 
 // =============================================================================
 // Org Member
@@ -154,7 +145,7 @@ const stacks = projectSlugs.map(
 // 🔵 Stack Tags — Allow Override (extraStackTags merged with base tags)
 // =============================================================================
 
-const allStackTags = { user: username, wksp: "policies", ...extraStackTags };
+const allStackTags = { user: username, wksp: "policies-training", ...extraStackTags };
 
 projectSlugs.forEach((slug, i) => {
   new pulumiservice.StackTags(
@@ -232,14 +223,6 @@ projectSlugs.forEach((slug, i) => {
         environmentVariables: {
           PULUMI_ORG: org,
           STACK_NAME: username,
-        },
-        oidc: {
-          aws: {
-            // Use OIDC to assume the least-privilege workshop role for each deployment
-            roleARN: awsRoleArn,
-            duration: "1h",
-            sessionName: pulumi.interpolate`pulumi-${username}-${slug}`,
-          },
         },
       },
       vcs: {

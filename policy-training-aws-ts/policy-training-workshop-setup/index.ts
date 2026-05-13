@@ -95,7 +95,7 @@ const projects: ProjectDef[] = [
 import * as aws from "@pulumi/aws";
 
 const websiteBucket = new aws.s3.BucketV2("website", {
-    bucket: \`wksp-\${pulumi.getStack()}-site\`,
+    bucket: \`policies-wksp-\${pulumi.getStack()}-site\`,
     tags: {
         Name: "workshop-website",
     },
@@ -125,78 +125,6 @@ export const websiteEndpoint = websiteBucket.websiteEndpoint;
 `,
   },
   {
-    slug: "lambda-api",
-    description: "Lambda + API Gateway — workshop training stack",
-    indexTs: `import * as pulumi from "@pulumi/pulumi";
-import * as aws from "@pulumi/aws";
-
-const lambdaRole = new aws.iam.Role("lambda-role", {
-    name: \`wksp-\${pulumi.getStack()}-lambda-role\`,
-    assumeRolePolicy: JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [{ Effect: "Allow", Principal: { Service: "lambda.amazonaws.com" }, Action: "sts:AssumeRole" }],
-    }),
-});
-
-new aws.iam.RolePolicy("lambda-logs-policy", {
-    role: lambdaRole.id,
-    policy: JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [{
-            Effect: "Allow",
-            Action: ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
-            Resource: "arn:aws:logs:*:*:log-group:/aws/lambda/wksp-*",
-        }],
-    }),
-});
-
-const defaultVpc = aws.ec2.getVpcOutput({ default: true });
-const defaultSubnets = aws.ec2.getSubnetsOutput({
-    filters: [{ name: "vpc-id", values: [defaultVpc.id] }],
-});
-
-const lambdaSg = new aws.ec2.SecurityGroup("lambda-sg", {
-    name: \`wksp-\${pulumi.getStack()}-lambda-sg\`,
-    description: "Lambda function security group",
-    vpcId: defaultVpc.id,
-    egress: [{
-        protocol: "-1",
-        fromPort: 0,
-        toPort: 0,
-        cidrBlocks: ["0.0.0.0/0"],
-        description: "Allow all outbound",
-    }],
-});
-
-const lambdaFn = new aws.lambda.Function("api", {
-    name: \`wksp-\${pulumi.getStack()}-api\`,
-    runtime: "nodejs18.x",
-    code: new pulumi.asset.AssetArchive({
-        "index.js": new pulumi.asset.StringAsset(
-            \`exports.handler = async (event) => ({
-  statusCode: 200,
-  body: JSON.stringify({ message: "Hello from the workshop API!" }),
-});\`
-        ),
-    }),
-    handler: "index.handler",
-    role: lambdaRole.arn,
-    vpcConfig: {
-        subnetIds: defaultSubnets.ids,
-        securityGroupIds: [lambdaSg.id],
-    },
-});
-
-const api = new aws.apigateway.RestApi("api", {
-    name: \`wksp-\${pulumi.getStack()}-rest-api\`,
-    description: "Workshop Lambda API",
-});
-
-export const functionArn = lambdaFn.arn;
-export const apiId = api.id;
-`,
-  },
-  {
     slug: "rds-database",
     description: "RDS PostgreSQL database — workshop training stack",
     indexTs: `import * as pulumi from "@pulumi/pulumi";
@@ -206,7 +134,7 @@ const config = new pulumi.Config();
 const dbPassword = config.requireSecret("dbPassword");
 
 const dbSg = new aws.ec2.SecurityGroup("db-sg", {
-    name: \`wksp-\${pulumi.getStack()}-db-sg\`,
+    name: \`policies-wksp-\${pulumi.getStack()}-db-sg\`,
     description: "Database security group",
     ingress: [{
         protocol: "tcp",
@@ -219,7 +147,7 @@ const dbSg = new aws.ec2.SecurityGroup("db-sg", {
 });
 
 const db = new aws.rds.Instance("app-db", {
-    identifier: \`wksp-\${pulumi.getStack()}-db\`,
+    identifier: \`policies-wksp-\${pulumi.getStack()}-db\`,
     engine: "postgres",
     engineVersion: "14",
     instanceClass: "db.t3.micro",
@@ -245,7 +173,7 @@ export const dbPort = db.port;
 import * as aws from "@pulumi/aws";
 
 const webSg = new aws.ec2.SecurityGroup("web-sg", {
-    name: \`wksp-\${pulumi.getStack()}-web-sg\`,
+    name: \`policies-wksp-\${pulumi.getStack()}-web-sg\`,
     description: "Web server security group",
     ingress: [
         { protocol: "tcp", fromPort: 80,  toPort: 80,  cidrBlocks: ["0.0.0.0/0"], description: "HTTP" },
@@ -284,13 +212,13 @@ export const publicDns = instance.publicDns;
 `,
   },
   {
-    slug: "iam-policies",
-    description: "WAF and application role — workshop training stack",
+    slug: "waf-config",
+    description: "WAF WebACL — workshop training stack",
     indexTs: `import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
 const webAcl = new aws.wafv2.WebAcl("app-waf", {
-    name: \`wksp-\${pulumi.getStack()}-waf\`,
+    name: \`policies-wksp-\${pulumi.getStack()}-waf\`,
     scope: "REGIONAL",
     defaultAction: { allow: {} },
     rules: [
@@ -329,44 +257,12 @@ const webAcl = new aws.wafv2.WebAcl("app-waf", {
     ],
     visibilityConfig: {
         cloudwatchMetricsEnabled: true,
-        metricName: \`wksp-\${pulumi.getStack()}-waf\`,
+        metricName: \`policies-wksp-\${pulumi.getStack()}-waf\`,
         sampledRequestsEnabled: false,
     },
 });
 
-const appRole = new aws.iam.Role("app-role", {
-    name: \`wksp-\${pulumi.getStack()}-app-role\`,
-    assumeRolePolicy: JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [{
-            Effect: "Allow",
-            Principal: { Service: "ec2.amazonaws.com" },
-            Action: "sts:AssumeRole",
-        }],
-    }),
-    description: "Instance role for the workshop web application",
-});
-
-new aws.iam.RolePolicy("app-s3-policy", {
-    role: appRole.id,
-    policy: JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [{
-            Effect: "Allow",
-            Action: ["s3:GetObject", "s3:PutObject"],
-            Resource: "arn:aws:s3:::wksp-*-uploads/*",
-        }],
-    }),
-});
-
-const instanceProfile = new aws.iam.InstanceProfile("app-profile", {
-    name: \`wksp-\${pulumi.getStack()}-app-profile\`,
-    role: appRole.name,
-});
-
 export const webAclArn = webAcl.arn;
-export const appRoleArn = appRole.arn;
-export const instanceProfileArn = instanceProfile.arn;
 `,
   },
 ];
@@ -388,8 +284,6 @@ variables:
   script:
     - pulumi stack select $PULUMI_ORG/$PULUMI_PROJECT/$STACK_NAME --create
     - pulumi preview --non-interactive --diff
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 ${projects
   .map(
@@ -397,7 +291,11 @@ ${projects
   <<: *pulumi_preview
   variables:
     PROJECT_DIR: projects/${p.slug}
-    PULUMI_PROJECT: ${p.slug}`,
+    PULUMI_PROJECT: ${p.slug}
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - projects/${p.slug}/**/*`,
   )
   .join("\n\n")}
 `;
@@ -560,7 +458,7 @@ if (existingAwsRoleArn === undefined) {
   const iamRole = new aws.iam.Role(
     "workshop-deploy-role",
     {
-      name: "pulumi-workshop-deploy",
+      name: "policies-wksp-deploy",
       description:
         "Least-privilege role for Pulumi Deployments to run workshop stacks",
       assumeRolePolicy: trustPolicy,
@@ -610,40 +508,7 @@ if (existingAwsRoleArn === undefined) {
             "s3:GetBucketRequestPayment",
           ],
           // S3 bucket ARNs don't include account ID
-          Resource: "arn:aws:s3:::wksp-*",
-        },
-        {
-          Sid: "LambdaFunctions",
-          Effect: "Allow",
-          Action: [
-            "lambda:CreateFunction",
-            "lambda:DeleteFunction",
-            "lambda:GetFunction",
-            "lambda:UpdateFunctionCode",
-            "lambda:UpdateFunctionConfiguration",
-            "lambda:AddPermission",
-            "lambda:RemovePermission",
-            "lambda:GetPolicy",
-            "lambda:TagResource",
-            "lambda:UntagResource",
-            "lambda:ListTags",
-            "lambda:PublishVersion",
-            "lambda:GetFunctionCodeSigningConfig",
-          ],
-          Resource: `arn:aws:lambda:${awsRegion}:${accountId}:function:wksp-*`,
-        },
-        {
-          Sid: "ApiGateway",
-          Effect: "Allow",
-          Action: [
-            "apigateway:GET",
-            "apigateway:POST",
-            "apigateway:PUT",
-            "apigateway:DELETE",
-            "apigateway:PATCH",
-          ],
-          // API Gateway ARNs don't include account ID; no resource-level restriction available
-          Resource: `arn:aws:apigateway:${awsRegion}::/restapis*`,
+          Resource: "arn:aws:s3:::policies-wksp-*",
         },
         {
           Sid: "RdsInstances",
@@ -663,7 +528,7 @@ if (existingAwsRoleArn === undefined) {
             "rds:DescribeDBInstanceAutomatedBackups",
           ],
           Resource: [
-            `arn:aws:rds:${awsRegion}:${accountId}:db:wksp-*`,
+            `arn:aws:rds:${awsRegion}:${accountId}:db:policies-wksp-*`,
             // Option group, parameter group, subnet group lookups require "*"
             `arn:aws:rds:${awsRegion}:${accountId}:og:*`,
             `arn:aws:rds:${awsRegion}:${accountId}:pg:*`,
@@ -673,7 +538,8 @@ if (existingAwsRoleArn === undefined) {
         {
           Sid: "Ec2DescribeOps",
           Effect: "Allow",
-          // Describe actions don't support resource-level restrictions — Resource:"*" required by AWS
+          // Describe actions don't support resource-level restrictions — Resource:"*" required by AWS.
+          // Region condition limits blast radius to the target region only.
           Action: [
             "ec2:DescribeInstances",
             "ec2:DescribeInstanceAttribute",
@@ -690,20 +556,14 @@ if (existingAwsRoleArn === undefined) {
             "ec2:DescribeVolumes",
           ],
           Resource: "*",
+          Condition: { StringEquals: { "aws:RequestedRegion": awsRegion } },
         },
         {
-          Sid: "Ec2InstanceOps",
+          Sid: "Ec2RunInstances",
           Effect: "Allow",
-          Action: [
-            // RunInstances requires perms on multiple resource types simultaneously
-            "ec2:RunInstances",
-            "ec2:TerminateInstances",
-            "ec2:StartInstances",
-            "ec2:StopInstances",
-            "ec2:ModifyInstanceAttribute",
-            "ec2:ModifyInstanceMetadataOptions",
-            "ec2:CreateTags",
-          ],
+          // RunInstances needs perms on multiple resource types simultaneously; tag condition
+          // ensures any launched instance must carry the policies-wksp-* Name tag.
+          Action: ["ec2:RunInstances", "ec2:CreateTags"],
           Resource: [
             `arn:aws:ec2:${awsRegion}:${accountId}:instance/*`,
             `arn:aws:ec2:${awsRegion}::image/*`,
@@ -713,12 +573,44 @@ if (existingAwsRoleArn === undefined) {
             `arn:aws:ec2:${awsRegion}:${accountId}:volume/*`,
             `arn:aws:ec2:${awsRegion}:${accountId}:key-pair/*`,
           ],
+          Condition: {
+            StringLike: { "aws:RequestTag/Name": "policies-wksp-*" },
+          },
         },
         {
-          Sid: "Ec2SecurityGroupOps",
+          Sid: "Ec2InstanceOps",
           Effect: "Allow",
+          // Lifecycle operations restricted to instances already tagged policies-wksp-*
           Action: [
-            "ec2:CreateSecurityGroup",
+            "ec2:TerminateInstances",
+            "ec2:StartInstances",
+            "ec2:StopInstances",
+            "ec2:ModifyInstanceAttribute",
+            "ec2:ModifyInstanceMetadataOptions",
+          ],
+          Resource: `arn:aws:ec2:${awsRegion}:${accountId}:instance/*`,
+          Condition: {
+            StringLike: { "ec2:ResourceTag/Name": "policies-wksp-*" },
+          },
+        },
+        {
+          Sid: "Ec2SecurityGroupCreate",
+          Effect: "Allow",
+          // Require the Name tag on creation so new SGs are always prefixed correctly
+          Action: ["ec2:CreateSecurityGroup"],
+          Resource: [
+            `arn:aws:ec2:${awsRegion}:${accountId}:security-group/*`,
+            `arn:aws:ec2:${awsRegion}:${accountId}:vpc/*`,
+          ],
+          Condition: {
+            StringLike: { "aws:RequestTag/Name": "policies-wksp-*" },
+          },
+        },
+        {
+          Sid: "Ec2SecurityGroupModify",
+          Effect: "Allow",
+          // Rule changes restricted to SGs already tagged policies-wksp-*
+          Action: [
             "ec2:DeleteSecurityGroup",
             "ec2:AuthorizeSecurityGroupIngress",
             "ec2:RevokeSecurityGroupIngress",
@@ -731,64 +623,9 @@ if (existingAwsRoleArn === undefined) {
             `arn:aws:ec2:${awsRegion}:${accountId}:security-group/*`,
             `arn:aws:ec2:${awsRegion}:${accountId}:vpc/*`,
           ],
-        },
-        {
-          Sid: "IamRolesAndProfiles",
-          Effect: "Allow",
-          Action: [
-            "iam:CreateRole",
-            "iam:DeleteRole",
-            "iam:GetRole",
-            "iam:PassRole",
-            "iam:UpdateRole",
-            "iam:UpdateAssumeRolePolicy",
-            "iam:TagRole",
-            "iam:UntagRole",
-            "iam:ListRoleTags",
-            "iam:PutRolePolicy",
-            "iam:GetRolePolicy",
-            "iam:DeleteRolePolicy",
-            "iam:ListRolePolicies",
-            "iam:AttachRolePolicy",
-            "iam:DetachRolePolicy",
-            "iam:ListAttachedRolePolicies",
-            "iam:CreateInstanceProfile",
-            "iam:DeleteInstanceProfile",
-            "iam:GetInstanceProfile",
-            "iam:AddRoleToInstanceProfile",
-            "iam:RemoveRoleFromInstanceProfile",
-            "iam:TagInstanceProfile",
-            "iam:ListInstanceProfilesForRole",
-          ],
-          Resource: [
-            `arn:aws:iam::${accountId}:role/wksp-*`,
-            `arn:aws:iam::${accountId}:instance-profile/wksp-*`,
-          ],
-        },
-        {
-          Sid: "CloudWatchLogsForLambda",
-          Effect: "Allow",
-          Action: [
-            "logs:CreateLogGroup",
-            "logs:DeleteLogGroup",
-            "logs:DescribeLogGroups",
-            "logs:CreateLogStream",
-            "logs:DeleteLogStream",
-            "logs:DescribeLogStreams",
-            "logs:PutLogEvents",
-            "logs:GetLogEvents",
-            "logs:TagLogGroup",
-            "logs:UntagLogGroup",
-            "logs:ListTagsLogGroup",
-            "logs:TagResource",
-            "logs:UntagResource",
-            "logs:ListTagsForResource",
-          ],
-          // Lambda auto-creates log groups under /aws/lambda/<function-name>
-          Resource: [
-            `arn:aws:logs:${awsRegion}:${accountId}:log-group:/aws/lambda/wksp-*`,
-            `arn:aws:logs:${awsRegion}:${accountId}:log-group:/aws/lambda/wksp-*:log-stream:*`,
-          ],
+          Condition: {
+            StringLike: { "ec2:ResourceTag/Name": "policies-wksp-*" },
+          },
         },
         {
           Sid: "Wafv2WebAcl",
@@ -805,10 +642,17 @@ if (existingAwsRoleArn === undefined) {
             "wafv2:GetLoggingConfiguration",
             "wafv2:DeleteLoggingConfiguration",
             "wafv2:ListLoggingConfigurations",
-            "wafv2:CheckCapacity",
-            "wafv2:DescribeManagedRuleGroup",
           ],
-          Resource: `arn:aws:wafv2:${awsRegion}:${accountId}:regional/webacl/wksp-*`,
+          Resource: `arn:aws:wafv2:${awsRegion}:${accountId}:regional/webacl/policies-wksp-*`,
+        },
+        {
+          Sid: "Wafv2ManagedRules",
+          Effect: "Allow",
+          // CheckCapacity and DescribeManagedRuleGroup operate on AWS-owned managed rule groups
+          // (not user-owned WebACLs), so Resource:"*" is unavoidable. Region condition limits scope.
+          Action: ["wafv2:CheckCapacity", "wafv2:DescribeManagedRuleGroup"],
+          Resource: "*",
+          Condition: { StringEquals: { "aws:RequestedRegion": awsRegion } },
         },
       ],
     }),
@@ -833,8 +677,8 @@ if (existingParticipantTeamName === undefined) {
   const team = new pulumiservice.Team("participants", {
     organizationName: org,
     teamType: "pulumi",
-    name: "workshop-participants",
-    displayName: "Workshop Participants",
+    name: "policies-wksp-participants",
+    displayName: "Policies Workshop Participants",
     description:
       "Policy training workshop participants. Members are added per-user by user-setup.",
     members: [],
@@ -842,32 +686,6 @@ if (existingParticipantTeamName === undefined) {
   participantTeamName = team.name.apply((n) => n!);
 } else {
   participantTeamName = pulumi.output(existingParticipantTeamName);
-}
-
-// =============================================================================
-// 🔵 Pulumi Organization Role — Allow Override with Config
-// Grants workshop participants read access to stacks and ability to open the
-// shared AWS ESC environment. Per-stack edit access is enforced via
-// TeamStackPermission in policy-training-user-setup, not here.
-// =============================================================================
-
-let workshopRoleName: pulumi.Output<string>;
-
-if (existingWorkshopRoleName === undefined) {
-  const workshopPermissions = pulumiservice.buildAllowPermissionsOutput({
-    permissions: ["stack:read", "environment:open"],
-  });
-  const orgRole = new pulumiservice.OrganizationRole("workshop-role", {
-    organizationName: org,
-    name: "workshop-participant",
-    description:
-      "Role for policy training workshop participants to access shared resources",
-    resourceType: "global",
-    permissions: workshopPermissions.permissions,
-  });
-  workshopRoleName = orgRole.name.apply((n) => n!);
-} else {
-  workshopRoleName = pulumi.output(existingWorkshopRoleName);
 }
 
 // =============================================================================
@@ -886,7 +704,7 @@ if (existingAwsEscEnvironment === undefined) {
         oidc:
           duration: 1h
           roleArn: ${awsRoleArn}
-          sessionName: pulumi-workshop
+          sessionName: policies-wksp
   environmentVariables:
     AWS_ACCESS_KEY_ID: \${aws.login.accessKeyId}
     AWS_SECRET_ACCESS_KEY: \${aws.login.secretAccessKey}
@@ -896,10 +714,11 @@ if (existingAwsEscEnvironment === undefined) {
 
   const awsEnv = new pulumiservice.Environment("aws-integration", {
     organization: org,
-    name: "workshop-aws-integration",
+    name: "policies-wksp-aws-integration",
     yaml: awsEnvYaml,
   });
-  awsEscEnvironmentName = awsEnv.name.apply((n) => n!);
+
+  awsEscEnvironmentName = awsEnv.environmentId.apply((n) => n!);
 } else {
   awsEscEnvironmentName = pulumi.output(existingAwsEscEnvironment);
 }
@@ -917,9 +736,53 @@ const allowedIpsYaml =
 
 const allowedIpsEnv = new pulumiservice.Environment("allowed-ips", {
   organization: org,
-  name: "workshop-allowed-ips",
+  name: "policies-wksp-allowed-ips",
   yaml: new pulumi.asset.StringAsset(allowedIpsYaml),
 });
+
+// =============================================================================
+// 🔵 Pulumi Organization Role — Allow Override with Config
+// Scoped to environment resources only — grants read and open on the ESC
+// environment type. The specific environment (policies-wksp-aws-integration)
+// is enforced per-user via TeamEnvironmentPermission in user-setup.
+// Stack access is handled entirely by TeamStackPermission in user-setup.
+// =============================================================================
+
+let workshopRoleName: pulumi.Output<string>;
+
+if (existingWorkshopRoleName === undefined) {
+  const workshopPermissions =
+    pulumiservice.buildEnvironmentScopedPermissionsOutput({
+      environmentId: awsEscEnvironmentName,
+      permissions: [`environment:read`, `environment:open`],
+    });
+
+  workshopPermissions.apply((n) => {
+    console.log("pems", n);
+  });
+
+  const workshopPermissions2 =
+    pulumiservice.buildEnvironmentScopedPermissionsOutput({
+      environmentId: allowedIpsEnv.environmentId.apply((n) => n!),
+      permissions: [`environment:read`, `environment:open`],
+    });
+
+  workshopPermissions2.apply((n) => {
+    console.log("pems", n);
+  });
+
+  const orgRole = new pulumiservice.OrganizationRole("workshop-role", {
+    organizationName: org,
+    name: "policies-wksp-participant",
+    description:
+      "Role for policy training workshop participants — scoped to ESC environment access only",
+    resourceType: "environment",
+    permissions: workshopPermissions,
+  });
+  workshopRoleName = orgRole.name.apply((n) => n!);
+} else {
+  workshopRoleName = pulumi.output(existingWorkshopRoleName);
+}
 
 // =============================================================================
 // 🔵 TTL: Destroy this stack after workshopTtlDays (default 21)

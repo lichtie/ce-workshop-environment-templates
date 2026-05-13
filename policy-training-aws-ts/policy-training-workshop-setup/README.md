@@ -59,7 +59,7 @@ If any of these are set, the corresponding resource is **skipped** and the provi
 ### GitLab
 
 - **Repository** — `policy-training-workshop` (private), initialized with a README
-- **5 project folders** — `projects/s3-website`, `projects/lambda-api`, `projects/rds-database`, `projects/ec2-instance`, `projects/iam-policies`; each contains a self-contained Pulumi program (`Pulumi.yaml`, `package.json`, `tsconfig.json`, `index.ts`) with intentional AWS security issues
+- **4 project folders** — `projects/s3-website`, `projects/rds-database`, `projects/ec2-instance`, `projects/waf-config`; each contains a self-contained Pulumi program (`Pulumi.yaml`, `package.json`, `tsconfig.json`, `index.ts`) with intentional AWS security issues
 - **CI pipeline** — `.gitlab-ci.yml` that runs `pulumi preview` on every merge request
 
 ### AWS
@@ -82,10 +82,9 @@ Each sub-project contains intentional AWS misconfigurations for participants to 
 | Project        | Key issues                                                                                                                 |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `s3-website`   | Public-read ACL, all public-access-block controls disabled, no encryption, no versioning, incomplete tagging               |
-| `lambda-api`   | Lambda security group allows unrestricted outbound (all ports, `0.0.0.0/0`), no dead letter queue, missing tags            |
 | `rds-database` | Port 5432 open to `0.0.0.0/0`, storage encryption disabled, no automated backups, no deletion protection, missing tags     |
 | `ec2-instance` | SSH open to `0.0.0.0/0`, IMDSv2 not enforced, root EBS unencrypted, missing tags                                           |
-| `iam-policies` | WAF rules in `COUNT` mode (no blocking), no rate-based rule, no WAF request logging, no permissions boundary, missing tags |
+| `waf-config` | WAF rules in `COUNT` mode (no blocking), no rate-based rule, no WAF request logging, no permissions boundary, missing tags |
 
 ---
 

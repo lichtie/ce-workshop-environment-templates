@@ -15,15 +15,14 @@ You have five Pulumi stacks pre-created for you, each deploying a different piec
 
 ---
 
-## The five projects
+## The four projects
 
 | Project | What it deploys | Issues to find |
 |---|---|---|
 | `s3-website` | S3 static website | Public-read ACL, public access blocks disabled, no encryption at rest, no versioning, missing required tags |
-| `lambda-api` | Lambda function + API Gateway | Execution role too permissive (`s3:*` on all resources), CloudWatch Logs wildcard, no dead letter queue, missing tags |
 | `rds-database` | RDS PostgreSQL instance | Port 5432 open to `0.0.0.0/0`, no storage encryption, no automated backups, no deletion protection, missing tags |
 | `ec2-instance` | EC2 web server | SSH open to `0.0.0.0/0`, IMDSv2 not enforced, root EBS unencrypted, missing tags |
-| `iam-policies` | EC2 instance role | Role grants `s3:*` on all resources, unnecessary `ec2:Describe*`, no permissions boundary, missing tags |
+| `waf-config` | WAF WebACL | Rules in `COUNT` mode (no blocking), no rate-based rule, no WAF request logging, missing tags |
 
 ---
 

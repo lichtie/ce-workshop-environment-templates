@@ -29,7 +29,7 @@ policy-training-aws-ts/
 
 Run once by the workshop administrator before participants arrive. Provisions all shared infrastructure:
 
-- A **GitLab repository** containing five Pulumi sub-projects with intentional AWS security issues
+- A **GitLab repository** containing four Pulumi projects with intentional AWS security issues
 - An **AWS IAM role** with OIDC trust so Pulumi Deployments can assume it without static credentials
 - Two **ESC environments** — one for AWS credential integration, one for allowed-IP policy config
 - A **Pulumi team** and **org role** for participant access
@@ -41,9 +41,9 @@ See [`policy-training-workshop-setup/README.md`](./policy-training-workshop-setu
 
 Run once per participant (can be scripted for large cohorts). Provisions per-participant resources:
 
-- **5 Pulumi stacks** (one per project), pre-tagged and scoped to the participant
-- **Deployment settings** pointing each stack at the participant's branch in the shared GitLab repo
-- **Preventative and audit policy groups** pre-wired to all five stacks
+- **4 Pulumi stacks** (one per project), pre-tagged and scoped to the participant
+- **Deployment settings** pointing each stack at the participant's folder in the shared GitLab repo
+- **Preventative and audit policy groups** pre-wired to all four stacks
 - **GitLab repo access** so the participant can push code
 - **Per-stack and self-destruct TTLs** that auto-clean after the workshop ends
 
@@ -51,17 +51,16 @@ See [`policy-training-user-setup/README.md`](./policy-training-user-setup/README
 
 ---
 
-## The five workshop projects
+## The four workshop projects
 
 Each project deploys a common AWS workload pattern with intentional misconfigurations for participants to find and fix:
 
-| Project        | Workload             | Key issues                                                               |
-| -------------- | -------------------- | ------------------------------------------------------------------------ |
-| `s3-website`   | S3 static site       | Public-read ACL, no encryption, no versioning, missing tags              |
-| `lambda-api`   | Lambda + API Gateway | Overly broad IAM role, log wildcard, no DLQ, missing tags                |
-| `rds-database` | RDS PostgreSQL       | Port 5432 open to internet, no encryption, no backups, missing tags      |
-| `ec2-instance` | EC2 web server       | SSH open to internet, IMDSv2 optional, unencrypted EBS, missing tags     |
-| `iam-policies` | EC2 instance role    | Overly broad S3 + EC2 permissions, no permissions boundary, missing tags |
+| Project        | Workload         | Key issues                                                                        |
+| -------------- | ---------------- | --------------------------------------------------------------------------------- |
+| `s3-website`   | S3 static site   | Public-read ACL, no encryption, no versioning, missing tags                       |
+| `rds-database` | RDS PostgreSQL   | Port 5432 open to internet, no encryption, no backups, missing tags               |
+| `ec2-instance` | EC2 web server   | SSH open to internet, IMDSv2 optional, unencrypted EBS, missing tags              |
+| `waf-config` | WAF WebACL       | Rules in `COUNT` mode, no rate-based rule, no request logging, missing tags       |
 
 ---
 
