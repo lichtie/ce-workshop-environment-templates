@@ -55,15 +55,13 @@ See [`policy-training-user-setup/README.md`](./policy-training-user-setup/README
 
 Each project deploys a common AWS workload pattern with intentional misconfigurations for participants to find and fix:
 
-| Project | Workload | Key issues |
-|---|---|---|
-| `s3-website` | S3 static site | Public-read ACL, no encryption, no versioning, missing tags |
-| `lambda-api` | Lambda + API Gateway | Overly broad IAM role, log wildcard, no DLQ, missing tags |
-| `rds-database` | RDS PostgreSQL | Port 5432 open to internet, no encryption, no backups, missing tags |
-| `ec2-instance` | EC2 web server | SSH open to internet, IMDSv2 optional, unencrypted EBS, missing tags |
-| `iam-policies` | EC2 instance role | Overly broad S3 + EC2 permissions, no permissions boundary, missing tags |
-
-Issues are realistic — the kind a developer might inadvertently push to production — rather than catastrophic misconfigurations. This keeps the workshop grounded in day-to-day security practice.
+| Project        | Workload             | Key issues                                                               |
+| -------------- | -------------------- | ------------------------------------------------------------------------ |
+| `s3-website`   | S3 static site       | Public-read ACL, no encryption, no versioning, missing tags              |
+| `lambda-api`   | Lambda + API Gateway | Overly broad IAM role, log wildcard, no DLQ, missing tags                |
+| `rds-database` | RDS PostgreSQL       | Port 5432 open to internet, no encryption, no backups, missing tags      |
+| `ec2-instance` | EC2 web server       | SSH open to internet, IMDSv2 optional, unencrypted EBS, missing tags     |
+| `iam-policies` | EC2 instance role    | Overly broad S3 + EC2 permissions, no permissions boundary, missing tags |
 
 ---
 

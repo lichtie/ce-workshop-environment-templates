@@ -10,7 +10,7 @@ import * as gitlab from "@pulumi/gitlab";
 const config = new pulumi.Config();
 
 // Required
-const org = config.require("organization");
+const org = pulumi.getOrganization();
 
 // 🔵 Override inputs — skip resource creation if these are set
 const existingParticipantTeamName = config.get("existingParticipantTeamName");
@@ -69,7 +69,10 @@ const makePackageJson = (name: string) =>
       name,
       version: "0.1.0",
       devDependencies: { "@types/node": "^18", typescript: "^5" },
-      dependencies: { "@pulumi/pulumi": "^3", "@pulumi/aws": "^6" },
+      dependencies: {
+        "@pulumi/aws": "^7.29.0",
+        "@pulumi/pulumi": "^3.237.0",
+      },
     },
     null,
     4,
@@ -91,29 +94,18 @@ const projects: ProjectDef[] = [
     indexTs: `import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
-// CONTAINS INTENTIONAL SECURITY ISSUES FOR WORKSHOP TRAINING
-// Issues to find:
-//   1. Bucket ACL set to public-read
-//   2. All public access block controls disabled
-//   3. No server-side encryption at rest
-//   4. No versioning enabled
-//   5. Incomplete tagging — missing Environment, Owner, Project, CostCenter
-
 const websiteBucket = new aws.s3.BucketV2("website", {
     bucket: \`wksp-\${pulumi.getStack()}-site\`,
     tags: {
         Name: "workshop-website",
-        // ISSUE: required tags missing (Environment, Owner, Project, CostCenter)
     },
 });
 
-// ISSUE: ACL grants public read to all objects in the bucket
 new aws.s3.BucketAclV2("website-acl", {
     bucket: websiteBucket.id,
     acl: "public-read",
 });
 
-// ISSUE: all four public-access-block controls are disabled
 new aws.s3.BucketPublicAccessBlock("website-pab", {
     bucket: websiteBucket.id,
     blockPublicAcls: false,
@@ -128,10 +120,6 @@ new aws.s3.BucketWebsiteConfigurationV2("website-config", {
     errorDocument: { key: "error.html" },
 });
 
-// ISSUE: aws.s3.BucketServerSideEncryptionConfigurationV2 is absent (no encryption at rest)
-// ISSUE: aws.s3.BucketVersioningV2 is absent (versioning not enabled)
-// ISSUE: no access logging configured
-
 export const bucketName = websiteBucket.bucket;
 export const websiteEndpoint = websiteBucket.websiteEndpoint;
 `,
@@ -142,32 +130,14 @@ export const websiteEndpoint = websiteBucket.websiteEndpoint;
     indexTs: `import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
-// CONTAINS INTENTIONAL SECURITY ISSUES FOR WORKSHOP TRAINING
-// Issues to find:
-//   1. Lambda execution role grants s3:* on all resources (should be one specific bucket/prefix)
-//   2. CloudWatch Logs permission uses wildcard ARN (should scope to this function's log group)
-//   3. No dead letter queue — failed invocations are silently dropped
-//   4. Missing required tags on function and role
-
 const lambdaRole = new aws.iam.Role("lambda-role", {
     name: \`wksp-\${pulumi.getStack()}-lambda-role\`,
     assumeRolePolicy: JSON.stringify({
         Version: "2012-10-17",
         Statement: [{ Effect: "Allow", Principal: { Service: "lambda.amazonaws.com" }, Action: "sts:AssumeRole" }],
     }),
-    // ISSUE: missing required tags
 });
 
-// ISSUE: s3:* on Resource:"*" is far broader than needed — scope to the app's specific bucket
-new aws.iam.RolePolicy("lambda-s3-policy", {
-    role: lambdaRole.id,
-    policy: JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [{ Effect: "Allow", Action: "s3:*", Resource: "*" }],
-    }),
-});
-
-// ISSUE: logs wildcard grants access to every log group in the account
 new aws.iam.RolePolicy("lambda-logs-policy", {
     role: lambdaRole.id,
     policy: JSON.stringify({
@@ -175,9 +145,27 @@ new aws.iam.RolePolicy("lambda-logs-policy", {
         Statement: [{
             Effect: "Allow",
             Action: ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
-            Resource: "arn:aws:logs:*:*:*",
+            Resource: "arn:aws:logs:*:*:log-group:/aws/lambda/wksp-*",
         }],
     }),
+});
+
+const defaultVpc = aws.ec2.getVpcOutput({ default: true });
+const defaultSubnets = aws.ec2.getSubnetsOutput({
+    filters: [{ name: "vpc-id", values: [defaultVpc.id] }],
+});
+
+const lambdaSg = new aws.ec2.SecurityGroup("lambda-sg", {
+    name: \`wksp-\${pulumi.getStack()}-lambda-sg\`,
+    description: "Lambda function security group",
+    vpcId: defaultVpc.id,
+    egress: [{
+        protocol: "-1",
+        fromPort: 0,
+        toPort: 0,
+        cidrBlocks: ["0.0.0.0/0"],
+        description: "Allow all outbound",
+    }],
 });
 
 const lambdaFn = new aws.lambda.Function("api", {
@@ -193,14 +181,15 @@ const lambdaFn = new aws.lambda.Function("api", {
     }),
     handler: "index.handler",
     role: lambdaRole.arn,
-    // ISSUE: no deadLetterConfig — failed async invocations are silently dropped
-    // ISSUE: missing required tags (Environment, Owner, Project)
+    vpcConfig: {
+        subnetIds: defaultSubnets.ids,
+        securityGroupIds: [lambdaSg.id],
+    },
 });
 
 const api = new aws.apigateway.RestApi("api", {
     name: \`wksp-\${pulumi.getStack()}-rest-api\`,
     description: "Workshop Lambda API",
-    // ISSUE: missing required tags
 });
 
 export const functionArn = lambdaFn.arn;
@@ -213,18 +202,9 @@ export const apiId = api.id;
     indexTs: `import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
-// CONTAINS INTENTIONAL SECURITY ISSUES FOR WORKSHOP TRAINING
-// Issues to find:
-//   1. Security group allows inbound Postgres (5432) from 0.0.0.0/0
-//   2. Storage encryption disabled
-//   3. Automated backups disabled (backupRetentionPeriod: 0)
-//   4. Deletion protection disabled
-//   5. Missing required tags on security group and DB instance
-
 const config = new pulumi.Config();
 const dbPassword = config.requireSecret("dbPassword");
 
-// ISSUE: port 5432 open to the entire internet — should restrict to app-server CIDR only
 const dbSg = new aws.ec2.SecurityGroup("db-sg", {
     name: \`wksp-\${pulumi.getStack()}-db-sg\`,
     description: "Database security group",
@@ -232,11 +212,10 @@ const dbSg = new aws.ec2.SecurityGroup("db-sg", {
         protocol: "tcp",
         fromPort: 5432,
         toPort: 5432,
-        cidrBlocks: ["0.0.0.0/0"],   // ISSUE: overly permissive firewall rule
+        cidrBlocks: ["0.0.0.0/0"],
         description: "PostgreSQL",
     }],
     egress: [{ protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["0.0.0.0/0"] }],
-    // ISSUE: missing required tags
 });
 
 const db = new aws.rds.Instance("app-db", {
@@ -249,11 +228,10 @@ const db = new aws.rds.Instance("app-db", {
     username: "dbadmin",
     password: dbPassword,
     vpcSecurityGroupIds: [dbSg.id],
-    storageEncrypted: false,       // ISSUE: encryption at rest disabled
-    backupRetentionPeriod: 0,      // ISSUE: no automated backups
-    deletionProtection: false,     // ISSUE: database can be deleted without protection
+    storageEncrypted: false,
+    backupRetentionPeriod: 0,
+    deletionProtection: false,
     skipFinalSnapshot: true,
-    // ISSUE: missing required tags (Environment, Owner, Project)
 });
 
 export const dbEndpoint = db.endpoint;
@@ -266,24 +244,15 @@ export const dbPort = db.port;
     indexTs: `import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
-// CONTAINS INTENTIONAL SECURITY ISSUES FOR WORKSHOP TRAINING
-// Issues to find:
-//   1. Security group allows SSH (port 22) from 0.0.0.0/0
-//   2. IMDSv2 not enforced (httpTokens: "optional")
-//   3. Root EBS volume not encrypted
-//   4. Incomplete tagging — missing Environment, Owner, Project
-
-// ISSUE: SSH open to the public internet — restrict to a bastion CIDR or remove
 const webSg = new aws.ec2.SecurityGroup("web-sg", {
     name: \`wksp-\${pulumi.getStack()}-web-sg\`,
     description: "Web server security group",
     ingress: [
         { protocol: "tcp", fromPort: 80,  toPort: 80,  cidrBlocks: ["0.0.0.0/0"], description: "HTTP" },
         { protocol: "tcp", fromPort: 443, toPort: 443, cidrBlocks: ["0.0.0.0/0"], description: "HTTPS" },
-        { protocol: "tcp", fromPort: 22,  toPort: 22,  cidrBlocks: ["0.0.0.0/0"], description: "SSH" },  // ISSUE
+        { protocol: "tcp", fromPort: 22,  toPort: 22,  cidrBlocks: ["0.0.0.0/0"], description: "SSH" },
     ],
     egress: [{ protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["0.0.0.0/0"] }],
-    // ISSUE: missing required tags
 });
 
 const ami = aws.ec2.getAmiOutput({
@@ -298,15 +267,14 @@ const instance = new aws.ec2.Instance("web-server", {
     vpcSecurityGroupIds: [webSg.id],
     metadataOptions: {
         httpEndpoint: "enabled",
-        httpTokens: "optional",  // ISSUE: IMDSv2 not enforced — should be "required"
+        httpTokens: "optional",
     },
     rootBlockDevice: {
         volumeSize: 20,
-        encrypted: false,        // ISSUE: root volume encryption disabled
+        encrypted: false,
     },
     tags: {
         Name: "workshop-web-server",
-        // ISSUE: missing required tags (Environment, Owner, Project)
     },
 });
 
@@ -317,18 +285,55 @@ export const publicDns = instance.publicDns;
   },
   {
     slug: "iam-policies",
-    description: "EC2 application role — workshop training stack",
+    description: "WAF and application role — workshop training stack",
     indexTs: `import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
-// CONTAINS INTENTIONAL SECURITY ISSUES FOR WORKSHOP TRAINING
-// Issues to find:
-//   1. Instance role grants s3:* on all resources (should be specific bucket + prefix)
-//   2. Unnecessary ec2:Describe* permission granted to a web application
-//   3. No permissions boundary on the role
-//   4. Missing required tags on role and instance profile
+const webAcl = new aws.wafv2.WebAcl("app-waf", {
+    name: \`wksp-\${pulumi.getStack()}-waf\`,
+    scope: "REGIONAL",
+    defaultAction: { allow: {} },
+    rules: [
+        {
+            name: "CommonRuleSet",
+            priority: 1,
+            overrideAction: { count: {} },
+            statement: {
+                managedRuleGroupStatement: {
+                    vendorName: "AWS",
+                    name: "AWSManagedRulesCommonRuleSet",
+                },
+            },
+            visibilityConfig: {
+                cloudwatchMetricsEnabled: true,
+                metricName: "CommonRuleSet",
+                sampledRequestsEnabled: false,
+            },
+        },
+        {
+            name: "SQLiRuleSet",
+            priority: 2,
+            overrideAction: { count: {} },
+            statement: {
+                managedRuleGroupStatement: {
+                    vendorName: "AWS",
+                    name: "AWSManagedRulesSQLiRuleSet",
+                },
+            },
+            visibilityConfig: {
+                cloudwatchMetricsEnabled: true,
+                metricName: "SQLiRuleSet",
+                sampledRequestsEnabled: false,
+            },
+        },
+    ],
+    visibilityConfig: {
+        cloudwatchMetricsEnabled: true,
+        metricName: \`wksp-\${pulumi.getStack()}-waf\`,
+        sampledRequestsEnabled: false,
+    },
+});
 
-// EC2 instance role for the workshop web application
 const appRole = new aws.iam.Role("app-role", {
     name: \`wksp-\${pulumi.getStack()}-app-role\`,
     assumeRolePolicy: JSON.stringify({
@@ -340,32 +345,16 @@ const appRole = new aws.iam.Role("app-role", {
         }],
     }),
     description: "Instance role for the workshop web application",
-    // ISSUE: no permissionsBoundary — role could be abused to escalate privileges
-    // ISSUE: missing required tags
 });
 
-// ISSUE: s3:* on Resource:"*" — app only needs GetObject/PutObject on one bucket prefix
 new aws.iam.RolePolicy("app-s3-policy", {
     role: appRole.id,
     policy: JSON.stringify({
         Version: "2012-10-17",
         Statement: [{
             Effect: "Allow",
-            Action: "s3:*",
-            Resource: "*",   // ISSUE: should be arn:aws:s3:::my-app-bucket/uploads/*
-        }],
-    }),
-});
-
-// ISSUE: web application has no reason to describe EC2 resources
-new aws.iam.RolePolicy("app-ec2-policy", {
-    role: appRole.id,
-    policy: JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [{
-            Effect: "Allow",
-            Action: "ec2:Describe*",
-            Resource: "*",
+            Action: ["s3:GetObject", "s3:PutObject"],
+            Resource: "arn:aws:s3:::wksp-*-uploads/*",
         }],
     }),
 });
@@ -373,9 +362,9 @@ new aws.iam.RolePolicy("app-ec2-policy", {
 const instanceProfile = new aws.iam.InstanceProfile("app-profile", {
     name: \`wksp-\${pulumi.getStack()}-app-profile\`,
     role: appRole.name,
-    // ISSUE: missing required tags
 });
 
+export const webAclArn = webAcl.arn;
 export const appRoleArn = appRole.arn;
 export const instanceProfileArn = instanceProfile.arn;
 `,
@@ -438,64 +427,84 @@ if (existingGitlabProjectId === undefined) {
   gitlabProjectId = repo.id;
   gitlabRepoUrl = repo.httpUrlToRepo;
 
-  new gitlab.RepositoryFile("ci-file", {
-    project: gitlabProjectId,
-    filePath: ".gitlab-ci.yml",
-    branch: "main",
-    content: b64(ciYml),
-    commitMessage: "feat: add GitLab CI/CD pipeline for Pulumi previews",
-    encoding: "base64",
-    authorName: "Pulumi Workshop",
-    authorEmail: "workshop@pulumi.com",
-  }, { dependsOn: repo });
+  new gitlab.RepositoryFile(
+    "ci-file",
+    {
+      project: gitlabProjectId,
+      filePath: ".gitlab-ci.yml",
+      branch: "main",
+      content: b64(ciYml),
+      commitMessage: "feat: add GitLab CI/CD pipeline for Pulumi previews",
+      encoding: "base64",
+      authorName: "Pulumi Workshop",
+      authorEmail: "workshop@pulumi.com",
+    },
+    { dependsOn: repo },
+  );
 
   for (const proj of projects) {
     const prefix = `projects/${proj.slug}`;
     const opts = { dependsOn: repo };
 
-    new gitlab.RepositoryFile(`${proj.slug}-pulumiyaml`, {
-      project: gitlabProjectId,
-      filePath: `${prefix}/Pulumi.yaml`,
-      branch: "main",
-      content: b64(makePulumiYaml(proj.slug, proj.description)),
-      commitMessage: `feat: add ${proj.slug} project`,
-      encoding: "base64",
-      authorName: "Pulumi Workshop",
-      authorEmail: "workshop@pulumi.com",
-    }, opts);
+    new gitlab.RepositoryFile(
+      `${proj.slug}-pulumiyaml`,
+      {
+        project: gitlabProjectId,
+        filePath: `${prefix}/Pulumi.yaml`,
+        branch: "main",
+        content: b64(makePulumiYaml(proj.slug, proj.description)),
+        commitMessage: `feat: add ${proj.slug} project`,
+        encoding: "base64",
+        authorName: "Pulumi Workshop",
+        authorEmail: "workshop@pulumi.com",
+      },
+      opts,
+    );
 
-    new gitlab.RepositoryFile(`${proj.slug}-packagejson`, {
-      project: gitlabProjectId,
-      filePath: `${prefix}/package.json`,
-      branch: "main",
-      content: b64(makePackageJson(proj.slug)),
-      commitMessage: `feat: add ${proj.slug} package.json`,
-      encoding: "base64",
-      authorName: "Pulumi Workshop",
-      authorEmail: "workshop@pulumi.com",
-    }, opts);
+    new gitlab.RepositoryFile(
+      `${proj.slug}-packagejson`,
+      {
+        project: gitlabProjectId,
+        filePath: `${prefix}/package.json`,
+        branch: "main",
+        content: b64(makePackageJson(proj.slug)),
+        commitMessage: `feat: add ${proj.slug} package.json`,
+        encoding: "base64",
+        authorName: "Pulumi Workshop",
+        authorEmail: "workshop@pulumi.com",
+      },
+      opts,
+    );
 
-    new gitlab.RepositoryFile(`${proj.slug}-tsconfig`, {
-      project: gitlabProjectId,
-      filePath: `${prefix}/tsconfig.json`,
-      branch: "main",
-      content: b64(sharedTsconfig),
-      commitMessage: `feat: add ${proj.slug} tsconfig.json`,
-      encoding: "base64",
-      authorName: "Pulumi Workshop",
-      authorEmail: "workshop@pulumi.com",
-    }, opts);
+    new gitlab.RepositoryFile(
+      `${proj.slug}-tsconfig`,
+      {
+        project: gitlabProjectId,
+        filePath: `${prefix}/tsconfig.json`,
+        branch: "main",
+        content: b64(sharedTsconfig),
+        commitMessage: `feat: add ${proj.slug} tsconfig.json`,
+        encoding: "base64",
+        authorName: "Pulumi Workshop",
+        authorEmail: "workshop@pulumi.com",
+      },
+      opts,
+    );
 
-    new gitlab.RepositoryFile(`${proj.slug}-indexts`, {
-      project: gitlabProjectId,
-      filePath: `${prefix}/index.ts`,
-      branch: "main",
-      content: b64(proj.indexTs),
-      commitMessage: `feat: add ${proj.slug} Pulumi program`,
-      encoding: "base64",
-      authorName: "Pulumi Workshop",
-      authorEmail: "workshop@pulumi.com",
-    }, opts);
+    new gitlab.RepositoryFile(
+      `${proj.slug}-indexts`,
+      {
+        project: gitlabProjectId,
+        filePath: `${prefix}/index.ts`,
+        branch: "main",
+        content: b64(proj.indexTs),
+        commitMessage: `feat: add ${proj.slug} Pulumi program`,
+        encoding: "base64",
+        authorName: "Pulumi Workshop",
+        authorEmail: "workshop@pulumi.com",
+      },
+      opts,
+    );
   }
 } else {
   gitlabProjectId = pulumi.output(existingGitlabProjectId);
@@ -530,20 +539,21 @@ if (existingAwsRoleArn === undefined) {
     .apply(([accountId, organization]: [string, string]) =>
       JSON.stringify({
         Version: "2012-10-17",
-        Statement: [{
-          Effect: "Allow",
-          Principal: {
-            Federated: `arn:aws:iam::${accountId}:oidc-provider/api.pulumi.com/oidc`,
-          },
-          Action: "sts:AssumeRoleWithWebIdentity",
-          Condition: {
-            StringEquals: { "api.pulumi.com/oidc:aud": organization },
-            StringLike: {
-              "api.pulumi.com/oidc:sub":
-                `pulumi:deploy:org:${organization}:project:*:stack:*:operation:*:scope:write`,
+        Statement: [
+          {
+            Effect: "Allow",
+            Principal: {
+              Federated: `arn:aws:iam::${accountId}:oidc-provider/api.pulumi.com/oidc`,
+            },
+            Action: "sts:AssumeRoleWithWebIdentity",
+            Condition: {
+              StringEquals: { "api.pulumi.com/oidc:aud": organization },
+              StringLike: {
+                "api.pulumi.com/oidc:sub": `pulumi:deploy:org:${organization}:project:*:stack:*:operation:*:scope:write`,
+              },
             },
           },
-        }],
+        ],
       }),
     );
 
@@ -551,7 +561,8 @@ if (existingAwsRoleArn === undefined) {
     "workshop-deploy-role",
     {
       name: "pulumi-workshop-deploy",
-      description: "Least-privilege role for Pulumi Deployments to run workshop stacks",
+      description:
+        "Least-privilege role for Pulumi Deployments to run workshop stacks",
       assumeRolePolicy: trustPolicy,
     },
     { dependsOn: oidcProvider ? [oidcProvider] : [] },
@@ -568,17 +579,35 @@ if (existingAwsRoleArn === undefined) {
           Sid: "S3Website",
           Effect: "Allow",
           Action: [
-            "s3:CreateBucket", "s3:DeleteBucket", "s3:ListBucket", "s3:ListAllMyBuckets",
-            "s3:GetBucketLocation", "s3:GetBucketAcl", "s3:PutBucketAcl",
-            "s3:GetBucketPublicAccessBlock", "s3:PutBucketPublicAccessBlock",
-            "s3:GetBucketWebsite", "s3:PutBucketWebsite", "s3:DeleteBucketWebsite",
-            "s3:GetBucketTagging", "s3:PutBucketTagging", "s3:DeleteBucketTagging",
-            "s3:GetBucketVersioning", "s3:GetBucketLogging", "s3:GetBucketCORS",
-            "s3:GetBucketPolicy", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy",
-            "s3:GetBucketOwnershipControls", "s3:PutBucketOwnershipControls",
-            "s3:GetBucketObjectLockConfiguration", "s3:GetEncryptionConfiguration",
-            "s3:GetLifecycleConfiguration", "s3:GetReplicationConfiguration",
-            "s3:GetAccelerateConfiguration", "s3:GetBucketRequestPayment",
+            "s3:CreateBucket",
+            "s3:DeleteBucket",
+            "s3:ListBucket",
+            "s3:ListAllMyBuckets",
+            "s3:GetBucketLocation",
+            "s3:GetBucketAcl",
+            "s3:PutBucketAcl",
+            "s3:GetBucketPublicAccessBlock",
+            "s3:PutBucketPublicAccessBlock",
+            "s3:GetBucketWebsite",
+            "s3:PutBucketWebsite",
+            "s3:DeleteBucketWebsite",
+            "s3:GetBucketTagging",
+            "s3:PutBucketTagging",
+            "s3:DeleteBucketTagging",
+            "s3:GetBucketVersioning",
+            "s3:GetBucketLogging",
+            "s3:GetBucketCORS",
+            "s3:GetBucketPolicy",
+            "s3:PutBucketPolicy",
+            "s3:DeleteBucketPolicy",
+            "s3:GetBucketOwnershipControls",
+            "s3:PutBucketOwnershipControls",
+            "s3:GetBucketObjectLockConfiguration",
+            "s3:GetEncryptionConfiguration",
+            "s3:GetLifecycleConfiguration",
+            "s3:GetReplicationConfiguration",
+            "s3:GetAccelerateConfiguration",
+            "s3:GetBucketRequestPayment",
           ],
           // S3 bucket ARNs don't include account ID
           Resource: "arn:aws:s3:::wksp-*",
@@ -587,11 +616,19 @@ if (existingAwsRoleArn === undefined) {
           Sid: "LambdaFunctions",
           Effect: "Allow",
           Action: [
-            "lambda:CreateFunction", "lambda:DeleteFunction", "lambda:GetFunction",
-            "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration",
-            "lambda:AddPermission", "lambda:RemovePermission", "lambda:GetPolicy",
-            "lambda:TagResource", "lambda:UntagResource", "lambda:ListTags",
-            "lambda:PublishVersion", "lambda:GetFunctionCodeSigningConfig",
+            "lambda:CreateFunction",
+            "lambda:DeleteFunction",
+            "lambda:GetFunction",
+            "lambda:UpdateFunctionCode",
+            "lambda:UpdateFunctionConfiguration",
+            "lambda:AddPermission",
+            "lambda:RemovePermission",
+            "lambda:GetPolicy",
+            "lambda:TagResource",
+            "lambda:UntagResource",
+            "lambda:ListTags",
+            "lambda:PublishVersion",
+            "lambda:GetFunctionCodeSigningConfig",
           ],
           Resource: `arn:aws:lambda:${awsRegion}:${accountId}:function:wksp-*`,
         },
@@ -599,8 +636,11 @@ if (existingAwsRoleArn === undefined) {
           Sid: "ApiGateway",
           Effect: "Allow",
           Action: [
-            "apigateway:GET", "apigateway:POST", "apigateway:PUT",
-            "apigateway:DELETE", "apigateway:PATCH",
+            "apigateway:GET",
+            "apigateway:POST",
+            "apigateway:PUT",
+            "apigateway:DELETE",
+            "apigateway:PATCH",
           ],
           // API Gateway ARNs don't include account ID; no resource-level restriction available
           Resource: `arn:aws:apigateway:${awsRegion}::/restapis*`,
@@ -609,11 +649,18 @@ if (existingAwsRoleArn === undefined) {
           Sid: "RdsInstances",
           Effect: "Allow",
           Action: [
-            "rds:CreateDBInstance", "rds:DeleteDBInstance", "rds:DescribeDBInstances",
-            "rds:ModifyDBInstance", "rds:AddTagsToResource", "rds:RemoveTagsFromResource",
-            "rds:ListTagsForResource", "rds:DescribeDBParameterGroups",
-            "rds:DescribeDBSubnetGroups", "rds:DescribeDBEngineVersions",
-            "rds:DescribeOrderableDBInstanceOptions", "rds:DescribeDBInstanceAutomatedBackups",
+            "rds:CreateDBInstance",
+            "rds:DeleteDBInstance",
+            "rds:DescribeDBInstances",
+            "rds:ModifyDBInstance",
+            "rds:AddTagsToResource",
+            "rds:RemoveTagsFromResource",
+            "rds:ListTagsForResource",
+            "rds:DescribeDBParameterGroups",
+            "rds:DescribeDBSubnetGroups",
+            "rds:DescribeDBEngineVersions",
+            "rds:DescribeOrderableDBInstanceOptions",
+            "rds:DescribeDBInstanceAutomatedBackups",
           ],
           Resource: [
             `arn:aws:rds:${awsRegion}:${accountId}:db:wksp-*`,
@@ -628,11 +675,19 @@ if (existingAwsRoleArn === undefined) {
           Effect: "Allow",
           // Describe actions don't support resource-level restrictions — Resource:"*" required by AWS
           Action: [
-            "ec2:DescribeInstances", "ec2:DescribeInstanceAttribute", "ec2:DescribeInstanceStatus",
-            "ec2:DescribeInstanceTypes", "ec2:DescribeImages", "ec2:DescribeKeyPairs",
-            "ec2:DescribeVpcs", "ec2:DescribeSubnets", "ec2:DescribeAvailabilityZones",
-            "ec2:DescribeSecurityGroups", "ec2:DescribeTags",
-            "ec2:DescribeNetworkInterfaces", "ec2:DescribeVolumes",
+            "ec2:DescribeInstances",
+            "ec2:DescribeInstanceAttribute",
+            "ec2:DescribeInstanceStatus",
+            "ec2:DescribeInstanceTypes",
+            "ec2:DescribeImages",
+            "ec2:DescribeKeyPairs",
+            "ec2:DescribeVpcs",
+            "ec2:DescribeSubnets",
+            "ec2:DescribeAvailabilityZones",
+            "ec2:DescribeSecurityGroups",
+            "ec2:DescribeTags",
+            "ec2:DescribeNetworkInterfaces",
+            "ec2:DescribeVolumes",
           ],
           Resource: "*",
         },
@@ -642,8 +697,11 @@ if (existingAwsRoleArn === undefined) {
           Action: [
             // RunInstances requires perms on multiple resource types simultaneously
             "ec2:RunInstances",
-            "ec2:TerminateInstances", "ec2:StartInstances", "ec2:StopInstances",
-            "ec2:ModifyInstanceAttribute", "ec2:ModifyInstanceMetadataOptions",
+            "ec2:TerminateInstances",
+            "ec2:StartInstances",
+            "ec2:StopInstances",
+            "ec2:ModifyInstanceAttribute",
+            "ec2:ModifyInstanceMetadataOptions",
             "ec2:CreateTags",
           ],
           Resource: [
@@ -660,9 +718,12 @@ if (existingAwsRoleArn === undefined) {
           Sid: "Ec2SecurityGroupOps",
           Effect: "Allow",
           Action: [
-            "ec2:CreateSecurityGroup", "ec2:DeleteSecurityGroup",
-            "ec2:AuthorizeSecurityGroupIngress", "ec2:RevokeSecurityGroupIngress",
-            "ec2:AuthorizeSecurityGroupEgress", "ec2:RevokeSecurityGroupEgress",
+            "ec2:CreateSecurityGroup",
+            "ec2:DeleteSecurityGroup",
+            "ec2:AuthorizeSecurityGroupIngress",
+            "ec2:RevokeSecurityGroupIngress",
+            "ec2:AuthorizeSecurityGroupEgress",
+            "ec2:RevokeSecurityGroupEgress",
             "ec2:UpdateSecurityGroupRuleDescriptionsIngress",
             "ec2:UpdateSecurityGroupRuleDescriptionsEgress",
           ],
@@ -675,14 +736,29 @@ if (existingAwsRoleArn === undefined) {
           Sid: "IamRolesAndProfiles",
           Effect: "Allow",
           Action: [
-            "iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:PassRole",
-            "iam:UpdateRole", "iam:UpdateAssumeRolePolicy",
-            "iam:TagRole", "iam:UntagRole", "iam:ListRoleTags",
-            "iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy", "iam:ListRolePolicies",
-            "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies",
-            "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile", "iam:GetInstanceProfile",
-            "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile",
-            "iam:TagInstanceProfile", "iam:ListInstanceProfilesForRole",
+            "iam:CreateRole",
+            "iam:DeleteRole",
+            "iam:GetRole",
+            "iam:PassRole",
+            "iam:UpdateRole",
+            "iam:UpdateAssumeRolePolicy",
+            "iam:TagRole",
+            "iam:UntagRole",
+            "iam:ListRoleTags",
+            "iam:PutRolePolicy",
+            "iam:GetRolePolicy",
+            "iam:DeleteRolePolicy",
+            "iam:ListRolePolicies",
+            "iam:AttachRolePolicy",
+            "iam:DetachRolePolicy",
+            "iam:ListAttachedRolePolicies",
+            "iam:CreateInstanceProfile",
+            "iam:DeleteInstanceProfile",
+            "iam:GetInstanceProfile",
+            "iam:AddRoleToInstanceProfile",
+            "iam:RemoveRoleFromInstanceProfile",
+            "iam:TagInstanceProfile",
+            "iam:ListInstanceProfilesForRole",
           ],
           Resource: [
             `arn:aws:iam::${accountId}:role/wksp-*`,
@@ -693,11 +769,20 @@ if (existingAwsRoleArn === undefined) {
           Sid: "CloudWatchLogsForLambda",
           Effect: "Allow",
           Action: [
-            "logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:DescribeLogGroups",
-            "logs:CreateLogStream", "logs:DeleteLogStream", "logs:DescribeLogStreams",
-            "logs:PutLogEvents", "logs:GetLogEvents",
-            "logs:TagLogGroup", "logs:UntagLogGroup", "logs:ListTagsLogGroup",
-            "logs:TagResource", "logs:UntagResource", "logs:ListTagsForResource",
+            "logs:CreateLogGroup",
+            "logs:DeleteLogGroup",
+            "logs:DescribeLogGroups",
+            "logs:CreateLogStream",
+            "logs:DeleteLogStream",
+            "logs:DescribeLogStreams",
+            "logs:PutLogEvents",
+            "logs:GetLogEvents",
+            "logs:TagLogGroup",
+            "logs:UntagLogGroup",
+            "logs:ListTagsLogGroup",
+            "logs:TagResource",
+            "logs:UntagResource",
+            "logs:ListTagsForResource",
           ],
           // Lambda auto-creates log groups under /aws/lambda/<function-name>
           Resource: [
@@ -705,8 +790,28 @@ if (existingAwsRoleArn === undefined) {
             `arn:aws:logs:${awsRegion}:${accountId}:log-group:/aws/lambda/wksp-*:log-stream:*`,
           ],
         },
+        {
+          Sid: "Wafv2WebAcl",
+          Effect: "Allow",
+          Action: [
+            "wafv2:CreateWebACL",
+            "wafv2:DeleteWebACL",
+            "wafv2:GetWebACL",
+            "wafv2:UpdateWebACL",
+            "wafv2:TagResource",
+            "wafv2:UntagResource",
+            "wafv2:ListTagsForResource",
+            "wafv2:PutLoggingConfiguration",
+            "wafv2:GetLoggingConfiguration",
+            "wafv2:DeleteLoggingConfiguration",
+            "wafv2:ListLoggingConfigurations",
+            "wafv2:CheckCapacity",
+            "wafv2:DescribeManagedRuleGroup",
+          ],
+          Resource: `arn:aws:wafv2:${awsRegion}:${accountId}:regional/webacl/wksp-*`,
+        },
       ],
-    })
+    }),
   );
   new aws.iam.RolePolicy("workshop-deploy-policy", {
     role: iamRole.id,
@@ -730,7 +835,8 @@ if (existingParticipantTeamName === undefined) {
     teamType: "pulumi",
     name: "workshop-participants",
     displayName: "Workshop Participants",
-    description: "Policy training workshop participants. Members are added per-user by user-setup.",
+    description:
+      "Policy training workshop participants. Members are added per-user by user-setup.",
     members: [],
   });
   participantTeamName = team.name.apply((n) => n!);
@@ -754,7 +860,8 @@ if (existingWorkshopRoleName === undefined) {
   const orgRole = new pulumiservice.OrganizationRole("workshop-role", {
     organizationName: org,
     name: "workshop-participant",
-    description: "Role for policy training workshop participants to access shared resources",
+    description:
+      "Role for policy training workshop participants to access shared resources",
     resourceType: "global",
     permissions: workshopPermissions.permissions,
   });
@@ -818,7 +925,9 @@ const allowedIpsEnv = new pulumiservice.Environment("allowed-ips", {
 // 🔵 TTL: Destroy this stack after workshopTtlDays (default 21)
 // =============================================================================
 
-const workshopDestroyAt = new Date(Date.now() + workshopTtlDays * 86400_000).toISOString();
+const workshopDestroyAt = new Date(
+  Date.now() + workshopTtlDays * 86400_000,
+).toISOString();
 
 new pulumiservice.DeploymentSchedule("workshop-ttl", {
   organization: org,

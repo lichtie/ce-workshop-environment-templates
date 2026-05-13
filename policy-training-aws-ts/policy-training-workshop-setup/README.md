@@ -12,12 +12,12 @@ Run `policy-training-workshop-setup` once per workshop cohort. After it complete
 
 ## Prerequisites
 
-| Requirement | Notes |
-|---|---|
-| Pulumi CLI | Authenticated to your Pulumi Cloud org |
-| AWS credentials | Must have IAM and OIDC management permissions in the target account |
-| GitLab token | Set via `GITLAB_TOKEN` env var or `gitlab:token` config; needs `api` scope |
-| `aws:region` config | Set via `pulumi config set aws:region <region>` |
+| Requirement         | Notes                                                                      |
+| ------------------- | -------------------------------------------------------------------------- |
+| Pulumi CLI          | Authenticated to your Pulumi Cloud org                                     |
+| AWS credentials     | Must have IAM and OIDC management permissions in the target account        |
+| GitLab token        | Set via `GITLAB_TOKEN` env var or `gitlab:token` config; needs `api` scope |
+| `aws:region` config | Set via `pulumi config set aws:region <region>`                            |
 
 ---
 
@@ -25,47 +25,50 @@ Run `policy-training-workshop-setup` once per workshop cohort. After it complete
 
 ### Required
 
-| Key | Description |
-|---|---|
+| Key            | Description                    |
+| -------------- | ------------------------------ |
 | `organization` | Pulumi Cloud organization name |
-| `aws:region` | AWS region to deploy into |
+| `aws:region`   | AWS region to deploy into      |
 
 ### Optional overrides
 
 If any of these are set, the corresponding resource is **skipped** and the provided value is used instead. Useful for re-running against an existing environment.
 
-| Key | Skips | Default behavior |
-|---|---|---|
-| `existingGitlabProjectId` | GitLab repo + all file resources | Create a new `policy-training-workshop` repo |
-| `existingGitlabRepoUrl` | (used alongside `existingGitlabProjectId`) | Read from new repo |
-| `existingAwsRoleArn` | IAM role + inline policy + OIDC provider | Create a new OIDC-trust role |
-| `existingOidcProviderArn` | OIDC provider only (role still created) | Create `https://api.pulumi.com/oidc` provider |
-| `existingAwsEscEnvironment` | AWS ESC environment | Create `workshop-aws-integration` |
-| `existingParticipantTeamName` | Pulumi team | Create `workshop-participants` |
-| `existingWorkshopRoleName` | Pulumi org role | Create `workshop-participant` role |
-| `workshopTtlDays` | — | `21` — days until this stack self-destructs |
+| Key                           | Skips                                      | Default behavior                              |
+| ----------------------------- | ------------------------------------------ | --------------------------------------------- |
+| `existingGitlabProjectId`     | GitLab repo + all file resources           | Create a new `policy-training-workshop` repo  |
+| `existingGitlabRepoUrl`       | (used alongside `existingGitlabProjectId`) | Read from new repo                            |
+| `existingAwsRoleArn`          | IAM role + inline policy + OIDC provider   | Create a new OIDC-trust role                  |
+| `existingOidcProviderArn`     | OIDC provider only (role still created)    | Create `https://api.pulumi.com/oidc` provider |
+| `existingAwsEscEnvironment`   | AWS ESC environment                        | Create `workshop-aws-integration`             |
+| `existingParticipantTeamName` | Pulumi team                                | Create `workshop-participants`                |
+| `existingWorkshopRoleName`    | Pulumi org role                            | Create `workshop-participant` role            |
+| `workshopTtlDays`             | —                                          | `21` — days until this stack self-destructs   |
 
 ### Other optional
 
-| Key | Description | Default |
-|---|---|---|
-| `allowedIps` | JSON array of CIDRs added to `workshop-allowed-ips` ESC env | `[]` |
-| `gitlabNamespaceId` | Numeric GitLab group/namespace ID for the new repo | Token owner's namespace |
+| Key                 | Description                                                 | Default                 |
+| ------------------- | ----------------------------------------------------------- | ----------------------- |
+| `allowedIps`        | JSON array of CIDRs added to `workshop-allowed-ips` ESC env | `[]`                    |
+| `gitlabNamespaceId` | Numeric GitLab group/namespace ID for the new repo          | Token owner's namespace |
 
 ---
 
 ## What gets deployed
 
 ### GitLab
+
 - **Repository** — `policy-training-workshop` (private), initialized with a README
-- **5 sub-projects** — one directory per workshop project, each with `Pulumi.yaml`, `package.json`, `tsconfig.json`, and `index.ts` containing intentional AWS security issues
+- **5 project folders** — `projects/s3-website`, `projects/lambda-api`, `projects/rds-database`, `projects/ec2-instance`, `projects/iam-policies`; each contains a self-contained Pulumi program (`Pulumi.yaml`, `package.json`, `tsconfig.json`, `index.ts`) with intentional AWS security issues
 - **CI pipeline** — `.gitlab-ci.yml` that runs `pulumi preview` on every merge request
 
 ### AWS
+
 - **OIDC provider** — registers `https://api.pulumi.com/oidc` in IAM (find-or-create)
 - **IAM role** — `pulumi-workshop-deploy`; trusted by Pulumi Deployments via OIDC; scoped to `wksp-*` resources in the target account
 
 ### Pulumi Cloud
+
 - **Team** — `workshop-participants` (members added per-user by `user-setup`)
 - **Org role** — `workshop-participant`; grants `stack:read` and `environment:open`
 - **ESC environment** — `workshop-aws-integration`; opens the IAM role via OIDC for Pulumi Deployments
@@ -76,13 +79,13 @@ If any of these are set, the corresponding resource is **skipped** and the provi
 
 Each sub-project contains intentional AWS misconfigurations for participants to find and remediate using Pulumi policies:
 
-| Project | Key issues |
-|---|---|
-| `s3-website` | Public-read ACL, all public-access-block controls disabled, no encryption, no versioning, incomplete tagging |
-| `lambda-api` | Execution role grants `s3:*` on all resources, logs wildcard ARN, no dead letter queue, missing tags |
-| `rds-database` | Port 5432 open to `0.0.0.0/0`, storage encryption disabled, no automated backups, no deletion protection, missing tags |
-| `ec2-instance` | SSH open to `0.0.0.0/0`, IMDSv2 not enforced, root EBS unencrypted, missing tags |
-| `iam-policies` | Instance role grants `s3:*` on all resources, unnecessary `ec2:Describe*`, no permissions boundary, missing tags |
+| Project        | Key issues                                                                                                                 |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `s3-website`   | Public-read ACL, all public-access-block controls disabled, no encryption, no versioning, incomplete tagging               |
+| `lambda-api`   | Lambda security group allows unrestricted outbound (all ports, `0.0.0.0/0`), no dead letter queue, missing tags            |
+| `rds-database` | Port 5432 open to `0.0.0.0/0`, storage encryption disabled, no automated backups, no deletion protection, missing tags     |
+| `ec2-instance` | SSH open to `0.0.0.0/0`, IMDSv2 not enforced, root EBS unencrypted, missing tags                                           |
+| `iam-policies` | WAF rules in `COUNT` mode (no blocking), no rate-based rule, no WAF request logging, no permissions boundary, missing tags |
 
 ---
 
@@ -124,7 +127,7 @@ See the [user-setup README](../policy-training-user-setup/README.md) for the ful
 
 ## Cleanup
 
-This stack schedules its own destruction `workshopTtlDays` days after deploy. Per-user stacks are similarly auto-destroyed 14 days after creation (configurable in `user-setup`).
+This stack schedules its own destruction `workshopTtlDays` days after deploy. Per-user stacks are similarly auto-destroyed 18 days after creation (configurable in `user-setup`).
 
 To destroy manually before the TTL fires:
 

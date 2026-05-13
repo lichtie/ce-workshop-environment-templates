@@ -15,10 +15,10 @@ ce-workshop-environment-templates/
 
 Each workshop directory follows the same pattern:
 
-| Directory | Purpose | Run by | Frequency |
-|---|---|---|---|
-| `*-workshop-setup` | Shared infrastructure for a cohort | Admin | Once per cohort |
-| `*-user-setup` | Per-participant resources | Admin (or script) | Once per participant |
+| Directory          | Purpose                            | Run by            | Frequency            |
+| ------------------ | ---------------------------------- | ----------------- | -------------------- |
+| `*-workshop-setup` | Shared infrastructure for a cohort | Admin             | Once per cohort      |
+| `*-user-setup`     | Per-participant resources          | Admin (or script) | Once per participant |
 
 ---
 
@@ -27,8 +27,6 @@ Each workshop directory follows the same pattern:
 ### [`policy-training-aws-ts`](./policy-training-aws-ts/README.md)
 
 Policy-as-code training using AWS and TypeScript. Participants audit and remediate intentional misconfigurations across five AWS workloads, then write and publish custom Pulumi policy packs.
-
-**Stack:** `@pulumi/pulumiservice`, `@pulumi/aws`, `@pulumi/gitlab`
 
 ---
 
@@ -41,38 +39,18 @@ Policy-as-code training using AWS and TypeScript. Participants audit and remedia
 
 ### Conventions
 
-**Pulumi programs**
-- Use TypeScript with `module: commonjs` and `moduleResolution: node` in `tsconfig.json`
-- Required config values use `config.require()`; optional overrides use `config.get()`
-- Never declare Pulumi resources inside `.apply()` callbacks — use `if` statements for conditional resource creation
-
-**Override pattern (color coding)**
-
-The programs in this repo use a consistent color-coded pattern for resource creation:
-
-| Color | Behavior | Implementation |
-|---|---|---|
-| 🔵 Blue | Allow Override — create by default; skip if `existing<X>` config key is provided | `if (existingX === undefined) { ... }` |
-| 🟠 Orange | Always Create — no override option | Plain resource declaration |
-| 🟢 Green | Find or Create — try a data source first; create if not found | Data source with fallback |
-
 **Naming**
+
 - Workshop-specific AWS resources should use a consistent prefix (e.g., `wksp-`) so IAM resource policies can be scoped without wildcarding the entire account
 - Pulumi stack names equal the participant username in user-setup programs — this flows through to AWS resource names via `pulumi.getStack()`
 
 **TTLs**
+
 - Use `pulumiservice.DeploymentSchedule` with `pulumiOperation: "destroy"` to auto-clean both setup stacks and participant stacks
 - Workshop setup stacks: default 21 days
-- User stacks: default 14 days (self-destruct on parent: 18 days)
+- User stacks: 18 days, but be sure to destroy any stacks within them first
 
 **Outputs**
+
 - Workshop-setup programs export everything user-setup needs to read via `StackReference`
 - Output names ending in `Out` (e.g., `awsEscEnvironmentNameOut`) indicate values consumed by user-setup
-
----
-
-## Maintenance notes
-
-- Node modules are gitignored; run `npm install` in each program directory before deploying
-- The `.claude/` directory in `policy-training-aws-ts/` contains AI assistant memory for this codebase — do not delete it
-- Test changes in an isolated Pulumi stack before updating the canonical cohort stack
