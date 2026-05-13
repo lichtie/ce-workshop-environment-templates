@@ -100,6 +100,7 @@ import * as aws from "@pulumi/aws";
 //   5. Incomplete tagging — missing Environment, Owner, Project, CostCenter
 
 const websiteBucket = new aws.s3.BucketV2("website", {
+    bucket: \`wksp-\${pulumi.getStack()}-site\`,
     tags: {
         Name: "workshop-website",
         // ISSUE: required tags missing (Environment, Owner, Project, CostCenter)
@@ -149,6 +150,7 @@ import * as aws from "@pulumi/aws";
 //   4. Missing required tags on function and role
 
 const lambdaRole = new aws.iam.Role("lambda-role", {
+    name: \`wksp-\${pulumi.getStack()}-lambda-role\`,
     assumeRolePolicy: JSON.stringify({
         Version: "2012-10-17",
         Statement: [{ Effect: "Allow", Principal: { Service: "lambda.amazonaws.com" }, Action: "sts:AssumeRole" }],
@@ -179,6 +181,7 @@ new aws.iam.RolePolicy("lambda-logs-policy", {
 });
 
 const lambdaFn = new aws.lambda.Function("api", {
+    name: \`wksp-\${pulumi.getStack()}-api\`,
     runtime: "nodejs18.x",
     code: new pulumi.asset.AssetArchive({
         "index.js": new pulumi.asset.StringAsset(
@@ -195,6 +198,7 @@ const lambdaFn = new aws.lambda.Function("api", {
 });
 
 const api = new aws.apigateway.RestApi("api", {
+    name: \`wksp-\${pulumi.getStack()}-rest-api\`,
     description: "Workshop Lambda API",
     // ISSUE: missing required tags
 });
@@ -222,6 +226,7 @@ const dbPassword = config.requireSecret("dbPassword");
 
 // ISSUE: port 5432 open to the entire internet — should restrict to app-server CIDR only
 const dbSg = new aws.ec2.SecurityGroup("db-sg", {
+    name: \`wksp-\${pulumi.getStack()}-db-sg\`,
     description: "Database security group",
     ingress: [{
         protocol: "tcp",
@@ -235,6 +240,7 @@ const dbSg = new aws.ec2.SecurityGroup("db-sg", {
 });
 
 const db = new aws.rds.Instance("app-db", {
+    identifier: \`wksp-\${pulumi.getStack()}-db\`,
     engine: "postgres",
     engineVersion: "14",
     instanceClass: "db.t3.micro",
@@ -269,6 +275,7 @@ import * as aws from "@pulumi/aws";
 
 // ISSUE: SSH open to the public internet — restrict to a bastion CIDR or remove
 const webSg = new aws.ec2.SecurityGroup("web-sg", {
+    name: \`wksp-\${pulumi.getStack()}-web-sg\`,
     description: "Web server security group",
     ingress: [
         { protocol: "tcp", fromPort: 80,  toPort: 80,  cidrBlocks: ["0.0.0.0/0"], description: "HTTP" },
@@ -323,6 +330,7 @@ import * as aws from "@pulumi/aws";
 
 // EC2 instance role for the workshop web application
 const appRole = new aws.iam.Role("app-role", {
+    name: \`wksp-\${pulumi.getStack()}-app-role\`,
     assumeRolePolicy: JSON.stringify({
         Version: "2012-10-17",
         Statement: [{
@@ -363,6 +371,7 @@ new aws.iam.RolePolicy("app-ec2-policy", {
 });
 
 const instanceProfile = new aws.iam.InstanceProfile("app-profile", {
+    name: \`wksp-\${pulumi.getStack()}-app-profile\`,
     role: appRole.name,
     // ISSUE: missing required tags
 });
@@ -572,7 +581,7 @@ if (existingAwsRoleArn === undefined) {
             "s3:GetAccelerateConfiguration", "s3:GetBucketRequestPayment",
           ],
           // S3 bucket ARNs don't include account ID
-          Resource: "arn:aws:s3:::*",
+          Resource: "arn:aws:s3:::wksp-*",
         },
         {
           Sid: "LambdaFunctions",
@@ -584,7 +593,7 @@ if (existingAwsRoleArn === undefined) {
             "lambda:TagResource", "lambda:UntagResource", "lambda:ListTags",
             "lambda:PublishVersion", "lambda:GetFunctionCodeSigningConfig",
           ],
-          Resource: `arn:aws:lambda:${awsRegion}:${accountId}:function:*`,
+          Resource: `arn:aws:lambda:${awsRegion}:${accountId}:function:wksp-*`,
         },
         {
           Sid: "ApiGateway",
@@ -606,7 +615,13 @@ if (existingAwsRoleArn === undefined) {
             "rds:DescribeDBSubnetGroups", "rds:DescribeDBEngineVersions",
             "rds:DescribeOrderableDBInstanceOptions", "rds:DescribeDBInstanceAutomatedBackups",
           ],
-          Resource: `arn:aws:rds:${awsRegion}:${accountId}:*`,
+          Resource: [
+            `arn:aws:rds:${awsRegion}:${accountId}:db:wksp-*`,
+            // Option group, parameter group, subnet group lookups require "*"
+            `arn:aws:rds:${awsRegion}:${accountId}:og:*`,
+            `arn:aws:rds:${awsRegion}:${accountId}:pg:*`,
+            `arn:aws:rds:${awsRegion}:${accountId}:subgrp:*`,
+          ],
         },
         {
           Sid: "Ec2DescribeOps",
@@ -670,8 +685,8 @@ if (existingAwsRoleArn === undefined) {
             "iam:TagInstanceProfile", "iam:ListInstanceProfilesForRole",
           ],
           Resource: [
-            `arn:aws:iam::${accountId}:role/*`,
-            `arn:aws:iam::${accountId}:instance-profile/*`,
+            `arn:aws:iam::${accountId}:role/wksp-*`,
+            `arn:aws:iam::${accountId}:instance-profile/wksp-*`,
           ],
         },
         {
@@ -684,9 +699,10 @@ if (existingAwsRoleArn === undefined) {
             "logs:TagLogGroup", "logs:UntagLogGroup", "logs:ListTagsLogGroup",
             "logs:TagResource", "logs:UntagResource", "logs:ListTagsForResource",
           ],
+          // Lambda auto-creates log groups under /aws/lambda/<function-name>
           Resource: [
-            `arn:aws:logs:${awsRegion}:${accountId}:log-group:*`,
-            `arn:aws:logs:${awsRegion}:${accountId}:log-group:*:log-stream:*`,
+            `arn:aws:logs:${awsRegion}:${accountId}:log-group:/aws/lambda/wksp-*`,
+            `arn:aws:logs:${awsRegion}:${accountId}:log-group:/aws/lambda/wksp-*:log-stream:*`,
           ],
         },
       ],
