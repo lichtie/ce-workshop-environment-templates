@@ -1,0 +1,3 @@
+name: policy-training-user-setup
+runtime: nodejs
+description: Per-participant resources for the policy-as-code training workshop

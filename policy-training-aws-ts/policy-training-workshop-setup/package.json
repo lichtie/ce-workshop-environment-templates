@@ -1,0 +1,18 @@
+{
+    "name": "policy-training-workshop-setup",
+    "version": "0.1.0",
+    "main": "index.js",
+    "scripts": {
+        "build": "tsc"
+    },
+    "dependencies": {
+        "@pulumi/aws": "^7.29.0",
+        "@pulumi/gitlab": "^9.11.0",
+        "@pulumi/pulumi": "^3.237.0",
+        "@pulumi/pulumiservice": "^0.40.0"
+    },
+    "devDependencies": {
+        "@types/node": "^18",
+        "typescript": "^5"
+    }
+}

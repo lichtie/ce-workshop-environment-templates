@@ -1,0 +1,3 @@
+name: policy-training-workshop-setup
+runtime: nodejs
+description: Workshop-level shared resources for the policy-as-code training workshop
