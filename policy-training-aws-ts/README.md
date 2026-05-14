@@ -55,12 +55,12 @@ See [`policy-training-user-setup/README.md`](./policy-training-user-setup/README
 
 One stack (`web-app`) deploys a combined web application with intentional misconfigurations for participants to find and fix:
 
-| Resource       | Key issues                                                                 |
-| -------------- | -------------------------------------------------------------------------- |
+| Resource       | Key issues                                                                |
+| -------------- | ------------------------------------------------------------------------- |
 | S3 bucket      | Public-read ACL, public access block disabled, missing `user`/`wksp` tags |
-| Security group | SSH open to `0.0.0.0/0`, missing tags                                      |
-| EC2 instance   | IMDSv2 optional, unencrypted EBS, missing tags                             |
-| WAF WebACL     | Rules in `COUNT` mode, sampling disabled, missing tags                     |
+| Security group | SSH open to `0.0.0.0/0`, missing tags                                     |
+| EC2 instance   | IMDSv2 optional, unencrypted EBS, missing tags                            |
+| WAF WebACL     | Rules in `COUNT` mode, sampling disabled, missing tags                    |
 
 ---
 
@@ -96,3 +96,7 @@ For large cohorts, wrap the user-setup block in a script that iterates over a li
 ## Resource naming
 
 All workshop AWS resources use the prefix `policies-wksp-<username>-` (e.g., `policies-wksp-alice-site`). This is intentional — the deploy IAM role's resource policies are scoped to `policies-wksp-*`, preventing participants from touching anything outside the workshop.
+
+## Supporting materials
+
+The supporting slides for this workshop are here: https://docs.google.com/presentation/d/13QC_4zLD-59Nz332PNvNGJeFTzxZWaNE_IjHy2pXNPo/edit?slide=id.p3#slide=id.p3
