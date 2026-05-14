@@ -13,20 +13,23 @@ const config = new pulumi.Config();
 const org = pulumi.getOrganization();
 
 // 🔵 Override inputs — skip resource creation if these are set
-const existingParticipantTeamName = config.get("existingParticipantTeamName");
-const existingWorkshopRoleName = config.get("existingWorkshopRoleName");
 const existingGitlabProjectId = config.get("existingGitlabProjectId");
 const existingGitlabRepoUrl = config.get("existingGitlabRepoUrl");
 const existingAwsRoleArn = config.get("existingAwsRoleArn");
 const existingOidcProviderArn = config.get("existingOidcProviderArn");
-const existingAwsEscEnvironment = config.get("existingAwsEscEnvironment");
+const existingAwsEscEnvironmentName = config.get(
+  "existingAwsEscEnvironmentName",
+);
 const workshopTtlDays = config.getNumber("workshopTtlDays") ?? 21;
 
 // 🟠 Always-create inputs — configurable but not overridable
 const allowedIps = config.getObject<string[]>("allowedIps") ?? [];
 
 // Other optional
-const gitlabNamespaceId = config.getNumber("gitlabNamespaceId");
+const gitlabGroupPath = config.require("gitlabGroupPath");
+
+const gitlabConfig = new pulumi.Config("gitlab");
+gitlabConfig.requireSecret("token");
 
 const awsConfig = new pulumi.Config("aws");
 const awsRegion = awsConfig.require("region");
@@ -36,6 +39,52 @@ const awsRegion = awsConfig.require("region");
 // =============================================================================
 
 const b64 = (s: string): string => Buffer.from(s).toString("base64");
+const pulumiAccessToken = config.requireSecret("pulumiAccessToken");
+
+const tokenPromise = new Promise<string>((resolve) => {
+  pulumiAccessToken.apply((t) => {
+    resolve(t);
+    return t;
+  });
+});
+
+const tagEnvWksp = new pulumi.ResourceHook("tag-env-wksp", async (args) => {
+  const https = require("https");
+  const org: string = args.newOutputs?.["organization"];
+  const project: string = args.newOutputs?.["project"];
+  const env: string = args.newOutputs?.["name"];
+  const token = await tokenPromise;
+
+  if (!org || !project || !env) return;
+
+  const body = JSON.stringify({ name: "wksp", value: "policies-wksp" });
+  await new Promise<void>((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: "api.pulumi.com",
+        path: `/api/esc/environments/${org}/${project}/${env}/tags`,
+        method: "POST",
+        headers: {
+          Authorization: `token ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/vnd.pulumi+8",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res: any) => {
+        let data = "";
+        res.on("data", (chunk: any) => (data += chunk));
+        res.on("end", () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve();
+          else reject(new Error(`Pulumi API ${res.statusCode}: ${data}`));
+        });
+      },
+    );
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+});
 
 // =============================================================================
 // GitLab Sub-project File Content
@@ -309,19 +358,17 @@ let gitlabProjectId: pulumi.Output<string>;
 let gitlabRepoUrl: pulumi.Output<string>;
 
 if (existingGitlabProjectId === undefined) {
-  const repoArgs: gitlab.ProjectArgs = {
+  const group = gitlab.getGroupOutput({ fullPath: gitlabGroupPath });
+
+  const repo = new gitlab.Project("workshop-repo", {
     name: "policy-training-workshop",
     description:
       "Workshop source code with intentional AWS security issues for policy-as-code training",
     defaultBranch: "main",
     initializeWithReadme: true,
     visibilityLevel: "private",
-  };
-  if (gitlabNamespaceId !== undefined) {
-    repoArgs.namespaceId = gitlabNamespaceId;
-  }
-
-  const repo = new gitlab.Project("workshop-repo", repoArgs);
+    namespaceId: group.id.apply((id) => parseInt(id)),
+  });
   gitlabProjectId = repo.id;
   gitlabRepoUrl = repo.httpUrlToRepo;
 
@@ -668,35 +715,14 @@ if (existingAwsRoleArn === undefined) {
 }
 
 // =============================================================================
-// 🔵 Pulumi Team — Allow Override with Config
-// =============================================================================
-
-let participantTeamName: pulumi.Output<string>;
-
-if (existingParticipantTeamName === undefined) {
-  const team = new pulumiservice.Team("participants", {
-    organizationName: org,
-    teamType: "pulumi",
-    name: "policies-wksp-participants",
-    displayName: "Policies Workshop Participants",
-    description:
-      "Policy training workshop participants. Members are added per-user by user-setup.",
-    members: [],
-  });
-  participantTeamName = team.name.apply((n) => n!);
-} else {
-  participantTeamName = pulumi.output(existingParticipantTeamName);
-}
-
-// =============================================================================
 // 🔵 ESC Environment: AWS Integration — Allow Override with Config
 // pulumi.interpolate embeds awsRoleArn (an Output<string>) into the YAML string.
 // StringAsset is a data wrapper, not a Pulumi resource.
 // =============================================================================
 
-let awsEscEnvironmentName: pulumi.Output<string>;
+let awsEnvName: pulumi.Output<string>;
 
-if (existingAwsEscEnvironment === undefined) {
+if (existingAwsEscEnvironmentName === undefined) {
   const awsEnvYaml = pulumi.interpolate`values:
   aws:
     login:
@@ -712,15 +738,19 @@ if (existingAwsEscEnvironment === undefined) {
     AWS_REGION: ${awsRegion}
 `.apply((s: string) => new pulumi.asset.StringAsset(s));
 
-  const awsEnv = new pulumiservice.Environment("aws-integration", {
-    organization: org,
-    name: "policies-wksp-aws-integration",
-    yaml: awsEnvYaml,
-  });
+  const awsEnv = new pulumiservice.Environment(
+    "aws-integration",
+    {
+      organization: org,
+      name: "policies-wksp-aws-integration",
+      yaml: awsEnvYaml,
+    },
+    { hooks: { afterCreate: [tagEnvWksp] } },
+  );
 
-  awsEscEnvironmentName = awsEnv.environmentId.apply((n) => n!);
+  awsEnvName = awsEnv.name.apply((n) => n!);
 } else {
-  awsEscEnvironmentName = pulumi.output(existingAwsEscEnvironment);
+  awsEnvName = pulumi.output(existingAwsEscEnvironmentName);
 }
 
 // =============================================================================
@@ -734,55 +764,15 @@ const allowedIpsYaml =
     ? `values:\n  pulumiConfig:\n    allowedCidrBlocks:\n${allowedIps.map((ip: string) => `      - "${ip}"`).join("\n")}\n`
     : `values:\n  pulumiConfig:\n    allowedCidrBlocks: []\n`;
 
-const allowedIpsEnv = new pulumiservice.Environment("allowed-ips", {
-  organization: org,
-  name: "policies-wksp-allowed-ips",
-  yaml: new pulumi.asset.StringAsset(allowedIpsYaml),
-});
-
-// =============================================================================
-// 🔵 Pulumi Organization Role — Allow Override with Config
-// Scoped to environment resources only — grants read and open on the ESC
-// environment type. The specific environment (policies-wksp-aws-integration)
-// is enforced per-user via TeamEnvironmentPermission in user-setup.
-// Stack access is handled entirely by TeamStackPermission in user-setup.
-// =============================================================================
-
-let workshopRoleName: pulumi.Output<string>;
-
-if (existingWorkshopRoleName === undefined) {
-  const workshopPermissions =
-    pulumiservice.buildEnvironmentScopedPermissionsOutput({
-      environmentId: awsEscEnvironmentName,
-      permissions: [`environment:read`, `environment:open`],
-    });
-
-  workshopPermissions.apply((n) => {
-    console.log("pems", n);
-  });
-
-  const workshopPermissions2 =
-    pulumiservice.buildEnvironmentScopedPermissionsOutput({
-      environmentId: allowedIpsEnv.environmentId.apply((n) => n!),
-      permissions: [`environment:read`, `environment:open`],
-    });
-
-  workshopPermissions2.apply((n) => {
-    console.log("pems", n);
-  });
-
-  const orgRole = new pulumiservice.OrganizationRole("workshop-role", {
-    organizationName: org,
-    name: "policies-wksp-participant",
-    description:
-      "Role for policy training workshop participants — scoped to ESC environment access only",
-    resourceType: "environment",
-    permissions: workshopPermissions,
-  });
-  workshopRoleName = orgRole.name.apply((n) => n!);
-} else {
-  workshopRoleName = pulumi.output(existingWorkshopRoleName);
-}
+const allowedIpsEnv = new pulumiservice.Environment(
+  "allowed-ips",
+  {
+    organization: org,
+    name: "policies-wksp-allowed-ips",
+    yaml: new pulumi.asset.StringAsset(allowedIpsYaml),
+  },
+  { hooks: { afterCreate: [tagEnvWksp] } },
+);
 
 // =============================================================================
 // 🔵 TTL: Destroy this stack after workshopTtlDays (default 21)
@@ -804,10 +794,8 @@ new pulumiservice.DeploymentSchedule("workshop-ttl", {
 // Outputs
 // =============================================================================
 
-export const participantTeamNameOut = participantTeamName;
-export const workshopRoleNameOut = workshopRoleName;
 export { gitlabProjectId, gitlabRepoUrl };
 export const awsRoleArnOut = awsRoleArn;
-export const awsEscEnvironmentNameOut = awsEscEnvironmentName;
 export const allowedIpsEnvironmentName = allowedIpsEnv.name;
+export const awsEscEnvironmentName = awsEnvName;
 export const workshopTtlScheduledDestroyAt = workshopDestroyAt;
