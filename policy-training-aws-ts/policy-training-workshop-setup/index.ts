@@ -365,7 +365,7 @@ if (existingGitlabProjectId === undefined) {
     description:
       "Workshop source code with intentional AWS security issues for policy-as-code training",
     defaultBranch: "main",
-    initializeWithReadme: true,
+    initializeWithReadme: false,
     visibilityLevel: "private",
     namespaceId: group.id.apply((id) => parseInt(id)),
   });
@@ -776,19 +776,46 @@ const allowedIpsEnv = new pulumiservice.Environment(
 
 // =============================================================================
 // 🔵 TTL: Destroy this stack after workshopTtlDays (default 21)
+// DeploymentSettings must exist on this stack before a DeploymentSchedule can
+// be created — the API rejects schedules on stacks without a runner configured.
 // =============================================================================
 
 const workshopDestroyAt = new Date(
   Date.now() + workshopTtlDays * 86400_000,
 ).toISOString();
 
-new pulumiservice.DeploymentSchedule("workshop-ttl", {
-  organization: org,
-  project: pulumi.getProject(),
-  stack: pulumi.getStack(),
-  pulumiOperation: "destroy",
-  timestamp: workshopDestroyAt,
-});
+const setupDeploymentSettings = new pulumiservice.DeploymentSettings(
+  "setup-deployment-settings",
+  {
+    organization: org,
+    project: pulumi.getProject(),
+    stack: pulumi.getStack(),
+    sourceContext: {
+      git: {
+        repoUrl: "https://github.com/lichtie/ce-workshop-environment-templates",
+        branch: "main",
+        repoDir: "policy-training-aws-ts/policy-training-workshop-setup",
+      },
+    },
+    operationContext: {
+      environmentVariables: {
+        PULUMI_ORG: org,
+      },
+    },
+  },
+);
+
+new pulumiservice.DeploymentSchedule(
+  "workshop-ttl",
+  {
+    organization: org,
+    project: pulumi.getProject(),
+    stack: pulumi.getStack(),
+    pulumiOperation: "destroy",
+    timestamp: workshopDestroyAt,
+  },
+  { dependsOn: setupDeploymentSettings },
+);
 
 // =============================================================================
 // Outputs
