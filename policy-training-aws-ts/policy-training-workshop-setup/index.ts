@@ -185,14 +185,11 @@ const appSg = new aws.ec2.SecurityGroup("app-sg", {
 });
 
 // --- EC2: web server ---
-const ami = aws.ec2.getAmiOutput({
-    mostRecent: true,
-    owners: ["amazon"],
-    filters: [{ name: "name", values: ["amzn2-ami-hvm-*-x86_64-gp2"] }],
-});
+// Amazon Linux 2023 x86_64 us-east-1 (al2023-20250714-prod-cqexeznmbu5za)
+const amiId = "ami-002c07c21536d5c83";
 
 const instance = new aws.ec2.Instance("web-server", {
-    ami: ami.id,
+    ami: amiId,
     instanceType: "t3.micro",
     vpcSecurityGroupIds: [appSg.id],
     metadataOptions: {
@@ -627,8 +624,8 @@ if (existingAwsEscEnvironmentName === undefined) {
 
 const requiredIpsYaml =
   requiredIps.length > 0
-    ? `values:\n  policyConfig:\n    requiredCidrBlocks:\n${requiredIps.map((ip: string) => `      - "${ip}"`).join("\n")}\n`
-    : `values:\n  policyConfig:\n    requiredCidrBlocks: []\n`;
+    ? `values:\n  policyConfig:\n    sg-required-cidrs:\n      requiredCidrBlocks:\n${requiredIps.map((ip: string) => `        - "${ip}"`).join("\n")}\n`
+    : `values:\n  policyConfig:\n    sg-required-cidrs:\n      requiredCidrBlocks: []\n`;
 
 const requiredIpsEnv = new pulumiservice.Environment(
   "required-ips",

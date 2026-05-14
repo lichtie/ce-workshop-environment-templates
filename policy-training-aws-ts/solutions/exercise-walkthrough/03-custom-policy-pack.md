@@ -124,4 +124,10 @@ Click **Save**. Repeat for your `<yourname>-preventative` group.
 
 ---
 
+## Step 9 — See the Custom Policy Violations
+
+Navigate to your `web-app / <yourname>` stack, click **Actions → Update → Deploy** to trigger a new deployment. You should now see violations from your custom pack alongside the `hitrust-aws` errors — the security group ingress rules will flag as missing the required CIDRs, and the S3 bucket will flag for lacking a TLS-enforcing bucket policy.
+
+---
+
 **Previous:** [02 — Preventative Policy Setup](02-preventative-policy-setup.md)
