@@ -41,9 +41,9 @@ See [`policy-training-workshop-setup/README.md`](./policy-training-workshop-setu
 
 Run once per participant (can be scripted for large cohorts). Provisions per-participant resources:
 
-- **4 Pulumi stacks** (one per project), pre-tagged and scoped to the participant
-- **Deployment settings** pointing each stack at the participant's folder in the shared GitLab repo
-- **Preventative and audit policy groups** pre-wired to all four stacks
+- **A `web-app` stack**, pre-tagged and scoped to the participant, with an initial deployment triggered automatically
+- **Deployment settings** pointing the stack at the participant's folder in the shared GitLab repo
+- **Preventative and audit policy groups** pre-wired to the stack
 - **GitLab repo access** so the participant can push code
 - **Per-stack and self-destruct TTLs** that auto-clean after the workshop ends
 
@@ -51,7 +51,7 @@ See [`policy-training-user-setup/README.md`](./policy-training-user-setup/README
 
 ---
 
-## The four workshop projects
+## The workshop project
 
 One stack (`web-app`) deploys a combined web application with intentional misconfigurations for participants to find and fix:
 
@@ -82,9 +82,10 @@ pulumi up
 cd ../policy-training-user-setup
 npm install
 pulumi stack init <participant-username>
-pulumi config set organization <your-pulumi-org>
-pulumi config set username <participant-username>
+pulumi config set userKey <participant-username>
+pulumi config set existingUsername <participant-pulumi-username>
 pulumi config set workshopStackRef <org>/policy-training-workshop-setup/<cohort-name>
+pulumi config set --secret pulumiAccessToken <pulumi-token>
 pulumi up
 ```
 
