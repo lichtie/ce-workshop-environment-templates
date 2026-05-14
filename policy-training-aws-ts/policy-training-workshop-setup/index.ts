@@ -29,7 +29,7 @@ const requiredIps = config.getObject<string[]>("requiredIps") ?? [];
 
 // Other optional
 const gitlabGroupPath = config.require("gitlabGroupPath");
-
+const gitlabVisibility = config.get("gitlabVisibility");
 const gitlabConfig = new pulumi.Config("gitlab");
 gitlabConfig.requireSecret("token");
 
@@ -140,100 +140,46 @@ interface ProjectDef {
 
 const projects: ProjectDef[] = [
   {
-    slug: "s3-website",
-    description: "S3 static website — workshop training stack",
+    slug: "web-app",
+    description: "Web application — workshop training stack",
     indexTs: `import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
-const websiteBucket = new aws.s3.BucketV2("website", {
-    bucket: \`policies-wksp-\${pulumi.getStack()}-site\`,
-    tags: {
-        Name: "workshop-website",
-    },
+const prefix = \`policies-wksp-\${pulumi.getStack()}\`;
+
+// --- S3: static asset bucket ---
+const assetBucket = new aws.s3.BucketV2("assets", {
+    bucket: \`\${prefix}-assets\`,
+    tags: { Name: \`\${prefix}-assets\` },
 });
 
-new aws.s3.BucketAclV2("website-acl", {
-    bucket: websiteBucket.id,
+new aws.s3.BucketAclV2("assets-acl", {
+    bucket: assetBucket.id,
     acl: "public-read",
 });
 
-new aws.s3.BucketPublicAccessBlock("website-pab", {
-    bucket: websiteBucket.id,
+new aws.s3.BucketPublicAccessBlock("assets-pab", {
+    bucket: assetBucket.id,
     blockPublicAcls: false,
     blockPublicPolicy: false,
     ignorePublicAcls: false,
     restrictPublicBuckets: false,
 });
 
-new aws.s3.BucketWebsiteConfigurationV2("website-config", {
-    bucket: websiteBucket.id,
-    indexDocument: { suffix: "index.html" },
-    errorDocument: { key: "error.html" },
-});
-
-export const bucketName = websiteBucket.bucket;
-export const websiteEndpoint = websiteBucket.websiteEndpoint;
-`,
-  },
-  {
-    slug: "rds-database",
-    description: "RDS PostgreSQL database — workshop training stack",
-    indexTs: `import * as pulumi from "@pulumi/pulumi";
-import * as aws from "@pulumi/aws";
-
-const config = new pulumi.Config();
-const dbPassword = config.requireSecret("dbPassword");
-
-const dbSg = new aws.ec2.SecurityGroup("db-sg", {
-    name: \`policies-wksp-\${pulumi.getStack()}-db-sg\`,
-    description: "Database security group",
-    ingress: [{
-        protocol: "tcp",
-        fromPort: 5432,
-        toPort: 5432,
-        cidrBlocks: ["0.0.0.0/0"],
-        description: "PostgreSQL",
-    }],
-    egress: [{ protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["0.0.0.0/0"] }],
-});
-
-const db = new aws.rds.Instance("app-db", {
-    identifier: \`policies-wksp-\${pulumi.getStack()}-db\`,
-    engine: "postgres",
-    engineVersion: "14",
-    instanceClass: "db.t3.micro",
-    allocatedStorage: 20,
-    dbName: "appdb",
-    username: "dbadmin",
-    password: dbPassword,
-    vpcSecurityGroupIds: [dbSg.id],
-    storageEncrypted: false,
-    backupRetentionPeriod: 0,
-    deletionProtection: false,
-    skipFinalSnapshot: true,
-});
-
-export const dbEndpoint = db.endpoint;
-export const dbPort = db.port;
-`,
-  },
-  {
-    slug: "ec2-instance",
-    description: "EC2 web server — workshop training stack",
-    indexTs: `import * as pulumi from "@pulumi/pulumi";
-import * as aws from "@pulumi/aws";
-
-const webSg = new aws.ec2.SecurityGroup("web-sg", {
-    name: \`policies-wksp-\${pulumi.getStack()}-web-sg\`,
-    description: "Web server security group",
+// --- Security Group ---
+const appSg = new aws.ec2.SecurityGroup("app-sg", {
+    name: \`\${prefix}-sg\`,
+    description: "Application security group",
     ingress: [
         { protocol: "tcp", fromPort: 80,  toPort: 80,  cidrBlocks: ["0.0.0.0/0"], description: "HTTP" },
         { protocol: "tcp", fromPort: 443, toPort: 443, cidrBlocks: ["0.0.0.0/0"], description: "HTTPS" },
         { protocol: "tcp", fromPort: 22,  toPort: 22,  cidrBlocks: ["0.0.0.0/0"], description: "SSH" },
     ],
     egress: [{ protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["0.0.0.0/0"] }],
+    tags: { Name: \`\${prefix}-sg\` },
 });
 
+// --- EC2: web server ---
 const ami = aws.ec2.getAmiOutput({
     mostRecent: true,
     owners: ["amazon"],
@@ -243,7 +189,7 @@ const ami = aws.ec2.getAmiOutput({
 const instance = new aws.ec2.Instance("web-server", {
     ami: ami.id,
     instanceType: "t3.micro",
-    vpcSecurityGroupIds: [webSg.id],
+    vpcSecurityGroupIds: [appSg.id],
     metadataOptions: {
         httpEndpoint: "enabled",
         httpTokens: "optional",
@@ -252,24 +198,12 @@ const instance = new aws.ec2.Instance("web-server", {
         volumeSize: 20,
         encrypted: false,
     },
-    tags: {
-        Name: "workshop-web-server",
-    },
+    tags: { Name: \`\${prefix}-web\` },
 });
 
-export const instanceId = instance.id;
-export const publicIp = instance.publicIp;
-export const publicDns = instance.publicDns;
-`,
-  },
-  {
-    slug: "waf-config",
-    description: "WAF WebACL — workshop training stack",
-    indexTs: `import * as pulumi from "@pulumi/pulumi";
-import * as aws from "@pulumi/aws";
-
+// --- WAF ---
 const webAcl = new aws.wafv2.WebAcl("app-waf", {
-    name: \`policies-wksp-\${pulumi.getStack()}-waf\`,
+    name: \`\${prefix}-waf\`,
     scope: "REGIONAL",
     defaultAction: { allow: {} },
     rules: [
@@ -308,11 +242,15 @@ const webAcl = new aws.wafv2.WebAcl("app-waf", {
     ],
     visibilityConfig: {
         cloudwatchMetricsEnabled: true,
-        metricName: \`policies-wksp-\${pulumi.getStack()}-waf\`,
+        metricName: \`\${prefix}-waf\`,
         sampledRequestsEnabled: false,
     },
+    tags: { Name: \`\${prefix}-waf\` },
 });
 
+export const bucketName = assetBucket.bucket;
+export const instanceId = instance.id;
+export const publicIp = instance.publicIp;
 export const webAclArn = webAcl.arn;
 `,
   },
@@ -368,7 +306,7 @@ if (existingGitlabProjectId === undefined) {
       "Workshop source code with intentional AWS security issues for policy-as-code training",
     defaultBranch: "main",
     initializeWithReadme: false,
-    visibilityLevel: "private",
+    visibilityLevel: gitlabVisibility ?? "private",
     namespaceId: group.id.apply((id) => parseInt(id)),
   });
   gitlabProjectId = repo.id;
@@ -564,31 +502,6 @@ if (existingAwsRoleArn === undefined) {
           ],
           // S3 bucket ARNs don't include account ID
           Resource: "arn:aws:s3:::policies-wksp-*",
-        },
-        {
-          Sid: "RdsInstances",
-          Effect: "Allow",
-          Action: [
-            "rds:CreateDBInstance",
-            "rds:DeleteDBInstance",
-            "rds:DescribeDBInstances",
-            "rds:ModifyDBInstance",
-            "rds:AddTagsToResource",
-            "rds:RemoveTagsFromResource",
-            "rds:ListTagsForResource",
-            "rds:DescribeDBParameterGroups",
-            "rds:DescribeDBSubnetGroups",
-            "rds:DescribeDBEngineVersions",
-            "rds:DescribeOrderableDBInstanceOptions",
-            "rds:DescribeDBInstanceAutomatedBackups",
-          ],
-          Resource: [
-            `arn:aws:rds:${awsRegion}:${accountId}:db:policies-wksp-*`,
-            // Option group, parameter group, subnet group lookups require "*"
-            `arn:aws:rds:${awsRegion}:${accountId}:og:*`,
-            `arn:aws:rds:${awsRegion}:${accountId}:pg:*`,
-            `arn:aws:rds:${awsRegion}:${accountId}:subgrp:*`,
-          ],
         },
         {
           Sid: "Ec2DescribeOps",
