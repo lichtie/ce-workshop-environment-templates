@@ -20,7 +20,7 @@ const gitSourceRepo = config.get("overrideGithubRepoFork") || undefined;
 const existingAwsRoleArn = config.get("existingAwsRoleArn") || undefined;
 const existingOidcProviderArn = config.get("existingOidcProviderArn") || undefined;
 const existingAwsEscEnvironmentName = config.get("existingAwsEscEnvironmentName") || undefined;
-const workshopTtlDays = config.getNumber("workshopTtlDays") ?? 21;
+const workshopTtlDays = Number(config.get("workshopTtlDays") || 21);
 
 // 🟠 Always-create inputs — configurable but not overridable
 const requiredIps = config.getObject<string[]>("requiredIps") ?? [];

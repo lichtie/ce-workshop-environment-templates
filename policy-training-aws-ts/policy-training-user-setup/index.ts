@@ -57,12 +57,13 @@ const awsEnvNamePromise = new Promise<string>((resolve) => {
 
 // 🔵 Override inputs — skip or customize resource creation if provided
 const existingTeam = config.get("existingTeam") || undefined;
-const stackTtlDays = config.getNumber("stackTtlDays") ?? 14;
-const parentStackTtlDays = config.getNumber("parentStackTtlDays") ?? 18;
+const stackTtlDays = Number(config.get("stackTtlDays") || 14);
+const parentStackTtlDays = Number(config.get("parentStackTtlDays") || 18);
 
 // GitLab user IDs are integers, not usernames. Provide the participant's numeric GitLab user ID.
 // If not provided, GitLab repo membership is skipped.
-const gitlabUserId = config.getNumber("gitlabUserId");
+const gitlabUserIdRaw = config.get("gitlabUserId") || undefined;
+const gitlabUserId = gitlabUserIdRaw !== undefined ? Number(gitlabUserIdRaw) : undefined;
 
 // =============================================================================
 // Workshop project slugs — must match sub-directories in the GitLab repo
