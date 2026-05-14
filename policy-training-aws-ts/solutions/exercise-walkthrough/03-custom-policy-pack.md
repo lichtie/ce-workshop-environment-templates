@@ -10,6 +10,12 @@ pulumi policy new aws-typescript
 
 This generates a baseline policy pack with example rules that you can modify. You can reference the completed solution at [`solutions/artifacts/policy-pack/index.ts`](../../artifacts/policy-pack/index.ts) as you work through the steps below.
 
+When you open `index.ts`, update the policy pack name to include your username to avoid conflicts when publishing:
+
+```typescript
+new PolicyPack("<yourname>-workshop-policies", {
+```
+
 Then upgrade the AWS types to the latest version:
 
 ```bash

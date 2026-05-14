@@ -21,7 +21,7 @@ const requiredCidrsConfigSchema: PolicyConfigSchema = {
   },
 };
 
-new PolicyPack("workshop-policies", {
+new PolicyPack("elisabeth-workshop-policies", {
   policies: [
     // =============================================================================
     // Resource Policy: Security Group ingress must include all required CIDRs
