@@ -12,6 +12,7 @@ const config = new pulumi.Config();
 const org = pulumi.getOrganization();
 const userKey = config.require("userKey");
 const username = config.require("existingUsername");
+const gitSourceRepo = config.get("overrideGithubRepoFork");
 
 // Workshop stack reference — reads shared outputs from policy-training-workshop-setup
 // Format: "<org>/policy-training-workshop-setup/<stack-name>"
@@ -38,8 +39,6 @@ const existingTeam = config.get("existingTeam");
 const stackTtlDays = config.getNumber("stackTtlDays") ?? 14;
 const parentStackTtlDays = config.getNumber("parentStackTtlDays") ?? 18;
 
-const extraStackTags = { "wksp-user": userKey };
-
 // GitLab user IDs are integers, not usernames. Provide the participant's numeric GitLab user ID.
 // If not provided, GitLab repo membership is skipped.
 const gitlabUserId = config.getNumber("gitlabUserId");
@@ -60,7 +59,7 @@ const projectSlugs = [
 // Per-user Team
 // Used for TeamStackPermission and TeamEnvironmentPermission.
 // =============================================================================
-let userTeam;
+let userTeam: pulumiservice.Team | undefined;
 if (!existingTeam) {
   userTeam = new pulumiservice.Team(`team-${userKey}`, {
     organizationName: org,
@@ -76,7 +75,7 @@ if (!existingTeam) {
   // =============================================================================
 
   new pulumiservice.TeamEnvironmentPermission(
-    `env-perm-${userKey}`,
+    `env-perm-aws-${userKey}`,
     {
       organization: org,
       team: userTeam.name.apply((n) => n!),
@@ -88,7 +87,7 @@ if (!existingTeam) {
   );
 
   new pulumiservice.TeamEnvironmentPermission(
-    `env-perm-${userKey}`,
+    `env-perm-allowed-ips-${userKey}`,
     {
       organization: org,
       team: userTeam.name.apply((n) => n!),
@@ -101,73 +100,47 @@ if (!existingTeam) {
 }
 
 // =============================================================================
-// 🟠 Stacks — Always Create
-// One stack per workshop project, named after the participant.
-// =============================================================================
-
-const stacks = projectSlugs.map(
-  (slug) =>
-    new pulumiservice.Stack(`stack-${userKey}-${slug}`, {
-      organizationName: org,
-      projectName: slug,
-      stackName: userKey,
-    }),
-);
-
-// =============================================================================
-// 🔵 Stack Tags — Allow Override (extraStackTags merged with base tags)
+// 🟠 Per-Stack Resources
+// For each project: stack → tags → team permission → deployment settings → TTL
 // =============================================================================
 
 const allStackTags = {
   user: userKey,
   wksp: "policies-training",
-  ...extraStackTags,
 };
 
-projectSlugs.forEach((slug, i) => {
+const stackDestroyAt = new Date(
+  Date.now() + stackTtlDays * 86400_000,
+).toISOString();
+
+const stacks = projectSlugs.map((slug) => {
+  const stack = new pulumiservice.Stack(`stack-${userKey}-${slug}`, {
+    organizationName: org,
+    projectName: slug,
+    stackName: userKey,
+  });
+
   new pulumiservice.StackTags(
     `tags-${userKey}-${slug}`,
-    {
-      organization: org,
-      project: slug,
-      stack: userKey,
-      tags: allStackTags,
-    },
-    { dependsOn: stacks[i] },
+    { organization: org, project: slug, stack: userKey, tags: allStackTags },
+    { dependsOn: stack },
   );
-});
 
-// =============================================================================
-// Team Stack Permissions — edit access to each of the user's stacks
-// This enforces the "tagged user: <username>" scoping described above.
-// =============================================================================
+  if (userTeam) {
+    new pulumiservice.TeamStackPermission(
+      `stack-perm-${userKey}-${slug}`,
+      {
+        organization: org,
+        team: userTeam.name.apply((n) => n!),
+        project: slug,
+        stack: userKey,
+        permission: 103, // 101=read, 102=edit, 103=admin
+      },
+      { dependsOn: [userTeam, stack] },
+    );
+  }
 
-projectSlugs.forEach((slug, i) => {
-  new pulumiservice.TeamStackPermission(
-    `stack-perm-${userKey}-${slug}`,
-    {
-      organization: org,
-      team: userTeam.name.apply((n) => n!),
-      project: slug,
-      stack: userKey,
-      permission: 102, // 101=read, 102=edit, 103=admin
-    },
-    { dependsOn: [userTeam, stacks[i]] },
-  );
-});
-
-// =============================================================================
-// 🔵 Deployment Settings — Allow Override (branch, VCS kind)
-// Each stack points to its sub-directory in the GitLab repo.
-// The workshop AWS role is assumed via OIDC on each deployment.
-//
-// NOTE: vcs.kind = "gitlab" is an attempt — if it causes errors on `pulumi up`,
-// remove the `vcs` block. Deployments can still be triggered manually or via
-// the Pulumi Cloud API / GitLab webhook.
-// =============================================================================
-
-projectSlugs.forEach((slug, i) => {
-  new pulumiservice.DeploymentSettings(
+  const settings = new pulumiservice.DeploymentSettings(
     `deploy-${userKey}-${slug}`,
     {
       organization: org,
@@ -175,7 +148,6 @@ projectSlugs.forEach((slug, i) => {
       stack: userKey,
       sourceContext: {
         git: {
-          repoUrl: gitlabRepoUrl,
           branch: "main",
           repoDir: `projects/${slug}`,
         },
@@ -187,22 +159,16 @@ projectSlugs.forEach((slug, i) => {
         },
       },
       vcs: {
-        kind: "gitlab",
-      } as any,
+        provider: "gitlab",
+        repository: "lichtie-group/policy-training-workshop",
+        deployCommits: true,
+        installationId: "4defa6f1-756b-4194-93ce-42e2272b1286",
+        previewPullRequests: true,
+      },
     },
-    { dependsOn: stacks[i] },
+    { dependsOn: stack },
   );
-});
 
-// =============================================================================
-// 🔵 Per-Stack TTL — Allow Override via stackTtlDays (default 14)
-// =============================================================================
-
-const stackDestroyAt = new Date(
-  Date.now() + stackTtlDays * 86400_000,
-).toISOString();
-
-projectSlugs.forEach((slug, i) => {
   new pulumiservice.DeploymentSchedule(
     `stack-ttl-${userKey}-${slug}`,
     {
@@ -212,8 +178,10 @@ projectSlugs.forEach((slug, i) => {
       pulumiOperation: "destroy",
       timestamp: stackDestroyAt,
     },
-    { dependsOn: stacks[i] },
+    { dependsOn: [stack, settings] },
   );
+
+  return stack;
 });
 
 // =============================================================================
@@ -277,17 +245,44 @@ if (gitlabUserId !== undefined) {
 // Schedules a destroy of this user-setup stack itself.
 // =============================================================================
 
+const setupDeploymentSettings = new pulumiservice.DeploymentSettings(
+  "setup-deployment-settings",
+  {
+    organization: org,
+    project: pulumi.getProject(),
+    stack: pulumi.getStack(),
+    sourceContext: {
+      git: {
+        repoUrl:
+          gitSourceRepo ??
+          "https://github.com/lichtie/ce-workshop-environment-templates",
+        branch: "main",
+        repoDir: "policy-training-aws-ts/policy-training-user-setup",
+      },
+    },
+    operationContext: {
+      environmentVariables: {
+        PULUMI_ORG: org,
+      },
+    },
+  },
+);
+
 const parentDestroyAt = new Date(
   Date.now() + parentStackTtlDays * 86400_000,
 ).toISOString();
 
-new pulumiservice.DeploymentSchedule(`self-ttl-${userKey}`, {
-  organization: org,
-  project: pulumi.getProject(),
-  stack: pulumi.getStack(),
-  pulumiOperation: "destroy",
-  timestamp: parentDestroyAt,
-});
+new pulumiservice.DeploymentSchedule(
+  `self-ttl-${userKey}`,
+  {
+    organization: org,
+    project: pulumi.getProject(),
+    stack: pulumi.getStack(),
+    pulumiOperation: "destroy",
+    timestamp: parentDestroyAt,
+  },
+  { dependsOn: setupDeploymentSettings },
+);
 
 // =============================================================================
 // Outputs

@@ -16,6 +16,7 @@ const org = pulumi.getOrganization();
 // 🔵 Override inputs — skip resource creation if these are set
 const existingGitlabProjectId = config.get("existingGitlabProjectId");
 const existingGitlabRepoUrl = config.get("existingGitlabRepoUrl");
+const gitSourceRepo = config.get("overrideGithubRepoFork");
 const existingAwsRoleArn = config.get("existingAwsRoleArn");
 const existingOidcProviderArn = config.get("existingOidcProviderArn");
 const existingAwsEscEnvironmentName = config.get(
@@ -801,7 +802,9 @@ const setupDeploymentSettings = new pulumiservice.DeploymentSettings(
     stack: pulumi.getStack(),
     sourceContext: {
       git: {
-        repoUrl: "https://github.com/lichtie/ce-workshop-environment-templates",
+        repoUrl:
+          gitSourceRepo ??
+          "https://github.com/lichtie/ce-workshop-environment-templates",
         branch: "main",
         repoDir: "policy-training-aws-ts/policy-training-workshop-setup",
       },
