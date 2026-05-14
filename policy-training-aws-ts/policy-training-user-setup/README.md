@@ -9,6 +9,12 @@ Provisions **per-participant resources** for a policy-as-code training workshop.
 - `policy-training-workshop-setup` is deployed and you have its stack reference
 - The participant has a Pulumi Cloud account in your org
 - The participant has a GitLab account (numeric user ID needed for repo access)
+- An ESC environment is attached to the stack that exposes the following secrets:
+
+| Key                 | Description                                                                   |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `pulumiAccessToken` | Pulumi access token — used for ESC attachment and Deployments API calls       |
+| `gitlab:token`      | GitLab personal access token with `api` scope — used to grant repo membership |
 
 ---
 

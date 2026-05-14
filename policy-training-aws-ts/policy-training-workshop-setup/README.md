@@ -6,11 +6,18 @@ Provisions the **shared infrastructure** for a policy-as-code training workshop.
 
 ## Prerequisites
 
-| Requirement     | Notes                                                                        |
-| --------------- | ---------------------------------------------------------------------------- |
-| Pulumi CLI      | Authenticated to your Pulumi Cloud org                                       |
-| AWS credentials | Must have IAM and OIDC management permissions in the target account          |
-| GitLab token    | Set via `pulumi config set --secret gitlab:token <token>`; needs `api` scope |
+| Requirement     | Notes                                                                           |
+| --------------- | ------------------------------------------------------------------------------- |
+| Pulumi CLI      | Authenticated to your Pulumi Cloud org                                          |
+| ESC environment | Attach an environment that exposes the secrets below before running `pulumi up` |
+
+### Required ESC environment secrets
+
+| Key                 | Description                                                                                                                            |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `pulumiAccessToken` | Pulumi access token — used for ESC environment tagging and Pulumi API calls                                                            |
+| `gitlab:token`      | GitLab personal access token with `api` scope — used to create the workshop repository                                                 |
+| AWS credentials     | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (or OIDC-based login); must have IAM and OIDC management permissions |
 
 ---
 
@@ -18,12 +25,10 @@ Provisions the **shared infrastructure** for a policy-as-code training workshop.
 
 ### Required
 
-| Key                 | Description                                                   |
-| ------------------- | ------------------------------------------------------------- |
-| `aws:region`        | AWS region to deploy into                                     |
-| `gitlab:token`      | GitLab personal access token with `api` scope (set as secret) |
-| `gitlabGroupPath`   | Full path of the GitLab group to create the workshop repo in  |
-| `pulumiAccessToken` | Pulumi Cloud access token (used by the ESC tag hook)          |
+| Key               | Description                                                  |
+| ----------------- | ------------------------------------------------------------ |
+| `aws:region`      | AWS region to deploy into                                    |
+| `gitlabGroupPath` | Full path of the GitLab group to create the workshop repo in |
 
 ### Optional
 
@@ -76,8 +81,6 @@ npm install
 pulumi stack init <cohort-name>
 pulumi config set aws:region <region>
 pulumi config set gitlabGroupPath <gitlab-group-path>
-pulumi config set --secret gitlab:token <gitlab-token>
-pulumi config set --secret pulumiAccessToken <pulumi-token>
 pulumi up
 ```
 
