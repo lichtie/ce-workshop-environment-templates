@@ -42,22 +42,17 @@ All resources must have the following tags:
 
 ### Required IP Ranges
 
-Security groups and WAF rules must restrict ingress to the following CIDRs:
-
-```
-# Fill in required CIDRs here
-# e.g. 10.0.0.0/8
-```
+Security groups and WAF rules must restrict ingress to a list of Cidrs.
 
 Your custom policy pack must enforce this by reading `requiredCidrBlocks` from the ESC environment and validating every security group ingress rule and WAF IP set against the list.
 
 ### Managed Pack Configuration
 
-> List the managed policy packs participants should attach, and what configuration values to set:
+Attach the **`hitrust-aws`** managed policy pack to your policy groups in advisory mode. Most of these can be the defaults.
 
-| Pack                      | Rule          | Expected Setting   |
-| ------------------------- | ------------- | ------------------ |
-| _(add managed pack name)_ | _(rule name)_ | _(expected value)_ |
+| Pack          | Rule          | Expected Setting   |
+| ------------- | ------------- | ------------------ |
+| `hitrust-aws` | _(rule name)_ | _(expected value)_ |
 
 ### Custom Policy Requirements
 

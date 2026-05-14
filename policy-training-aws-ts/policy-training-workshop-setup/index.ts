@@ -153,18 +153,23 @@ const assetBucket = new aws.s3.BucketV2("assets", {
     tags: { Name: \`\${prefix}-assets\` },
 });
 
-new aws.s3.BucketAclV2("assets-acl", {
+const assetsOwnership = new aws.s3.BucketOwnershipControls("assets-ownership", {
     bucket: assetBucket.id,
-    acl: "public-read",
+    rule: { objectOwnership: "ObjectWriter" },
 });
 
-new aws.s3.BucketPublicAccessBlock("assets-pab", {
+const assetsPab = new aws.s3.BucketPublicAccessBlock("assets-pab", {
     bucket: assetBucket.id,
     blockPublicAcls: false,
     blockPublicPolicy: false,
     ignorePublicAcls: false,
     restrictPublicBuckets: false,
-});
+}, { dependsOn: [assetsOwnership] });
+
+new aws.s3.BucketAclV2("assets-acl", {
+    bucket: assetBucket.id,
+    acl: "public-read",
+}, { dependsOn: [assetsOwnership, assetsPab] });
 
 // --- Security Group ---
 const appSg = new aws.ec2.SecurityGroup("app-sg", {
@@ -513,6 +518,7 @@ if (existingAwsRoleArn === undefined) {
             "ec2:DescribeInstanceAttribute",
             "ec2:DescribeInstanceStatus",
             "ec2:DescribeInstanceTypes",
+            "ec2:DescribeInstanceCreditSpecifications",
             "ec2:DescribeImages",
             "ec2:DescribeKeyPairs",
             "ec2:DescribeVpcs",
@@ -527,13 +533,22 @@ if (existingAwsRoleArn === undefined) {
           Condition: { StringEquals: { "aws:RequestedRegion": awsRegion } },
         },
         {
-          Sid: "Ec2RunInstances",
+          Sid: "Ec2RunInstancesInstance",
           Effect: "Allow",
-          // RunInstances needs perms on multiple resource types simultaneously; tag condition
-          // ensures any launched instance must carry the policies-wksp-* Name tag.
+          // Tag condition on the instance resource ensures launched instances carry the prefix.
+          // Supporting resources (image, network-interface, etc.) are in a separate statement —
+          // they don't carry a request tag, so a combined condition would always deny.
+          Action: ["ec2:RunInstances", "ec2:CreateTags"],
+          Resource: `arn:aws:ec2:${awsRegion}:${accountId}:instance/*`,
+          Condition: {
+            StringLike: { "aws:RequestTag/Name": "policies-wksp-*" },
+          },
+        },
+        {
+          Sid: "Ec2RunInstancesResources",
+          Effect: "Allow",
           Action: ["ec2:RunInstances", "ec2:CreateTags"],
           Resource: [
-            `arn:aws:ec2:${awsRegion}:${accountId}:instance/*`,
             `arn:aws:ec2:${awsRegion}::image/*`,
             `arn:aws:ec2:${awsRegion}:${accountId}:network-interface/*`,
             `arn:aws:ec2:${awsRegion}:${accountId}:security-group/*`,
@@ -541,9 +556,7 @@ if (existingAwsRoleArn === undefined) {
             `arn:aws:ec2:${awsRegion}:${accountId}:volume/*`,
             `arn:aws:ec2:${awsRegion}:${accountId}:key-pair/*`,
           ],
-          Condition: {
-            StringLike: { "aws:RequestTag/Name": "policies-wksp-*" },
-          },
+          Condition: { StringEquals: { "aws:RequestedRegion": awsRegion } },
         },
         {
           Sid: "Ec2InstanceOps",
@@ -564,15 +577,21 @@ if (existingAwsRoleArn === undefined) {
         {
           Sid: "Ec2SecurityGroupCreate",
           Effect: "Allow",
-          // Require the Name tag on creation so new SGs are always prefixed correctly
+          // Tag condition on the SG resource ensures new SGs are always prefixed correctly.
+          // VPC is split into a separate statement — IAM evaluates the condition against both
+          // resources, and the VPC has no request tag, so a combined statement would always deny.
           Action: ["ec2:CreateSecurityGroup"],
-          Resource: [
-            `arn:aws:ec2:${awsRegion}:${accountId}:security-group/*`,
-            `arn:aws:ec2:${awsRegion}:${accountId}:vpc/*`,
-          ],
+          Resource: `arn:aws:ec2:${awsRegion}:${accountId}:security-group/*`,
           Condition: {
             StringLike: { "aws:RequestTag/Name": "policies-wksp-*" },
           },
+        },
+        {
+          Sid: "Ec2SecurityGroupCreateVpc",
+          Effect: "Allow",
+          Action: ["ec2:CreateSecurityGroup"],
+          Resource: `arn:aws:ec2:${awsRegion}:${accountId}:vpc/*`,
+          Condition: { StringEquals: { "aws:RequestedRegion": awsRegion } },
         },
         {
           Sid: "Ec2SecurityGroupModify",
@@ -611,7 +630,12 @@ if (existingAwsRoleArn === undefined) {
             "wafv2:DeleteLoggingConfiguration",
             "wafv2:ListLoggingConfigurations",
           ],
-          Resource: `arn:aws:wafv2:${awsRegion}:${accountId}:regional/webacl/policies-wksp-*`,
+          Resource: [
+            `arn:aws:wafv2:${awsRegion}:${accountId}:regional/webacl/policies-wksp-*`,
+            // CreateWebACL and UpdateWebACL also require permission on any managed rule sets
+            // referenced in the rules list.
+            `arn:aws:wafv2:${awsRegion}:${accountId}:regional/managedruleset/*/*`,
+          ],
         },
         {
           Sid: "Wafv2ManagedRules",
