@@ -33,12 +33,12 @@ Open pull requests in the GitLab workshop repo to fix the security issues in you
 
 ### Required Tags
 
-All resources must have the following tags:
+All resources must have the following tags. These are configured as required tags in the `hitrust-aws` policy pack.
 
-| Tag Key | Expected Value | Notes        |
-| ------- | -------------- | ------------ |
-| `user`  | Your username  | e.g. `alice` |
-| `wksp`  | policies-wksp  |              |
+| Tag Key | Expected Value  | Notes                              |
+| ------- | --------------- | ---------------------------------- |
+| `user`  | Your username   | e.g. `alice`                       |
+| `wksp`  | `policies-wksp` | Same value for all workshop stacks |
 
 ### Required IP Ranges
 
@@ -48,11 +48,14 @@ Your custom policy pack must enforce this by reading `requiredCidrBlocks` from t
 
 ### Managed Pack Configuration
 
-Attach the **`hitrust-aws`** managed policy pack to your policy groups in advisory mode. Most of these can be the defaults.
+Attach the **`hitrust-aws`** managed policy pack to your policy groups in advisory mode. Most of these can be the defaults, but a few need custom configuration.
 
-| Pack          | Rule          | Expected Setting   |
-| ------------- | ------------- | ------------------ |
-| `hitrust-aws` | _(rule name)_ | _(expected value)_ |
+| Pack          | Rule                         | Expected Setting                           |
+| ------------- | ---------------------------- | ------------------------------------------ |
+| `hitrust-aws` | `Resource-Tagging`           | Required Tags: `user`, `wksp`              |
+| `hitrust-aws` | `Anti-Malware-Edr`           | Disabled (enforced via separate toolchain) |
+| `hitrust-aws` | `Centralized-Os-App-Logging` | Disabled (enforced via separate toolchain) |
+| `hitrust-aws` | All other rules              | Policy pack default (advisory)             |
 
 ### Custom Policy Requirements
 
