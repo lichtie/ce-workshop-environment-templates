@@ -218,15 +218,12 @@ const ciYml = `image: pulumi/pulumi-nodejs:latest
 stages:
   - preview
 
-variables:
-  PULUMI_ACCESS_TOKEN: $PULUMI_ACCESS_TOKEN
-  PULUMI_ORG: $PULUMI_ORG
-
 .pulumi_preview: &pulumi_preview
   stage: preview
   before_script:
     - cd $PROJECT_DIR && npm install
     - STACK_NAME=$(echo "$CI_COMMIT_REF_NAME" | cut -d'-' -f1)
+    - pulumi login
   script:
     - pulumi stack select $PULUMI_ORG/$PULUMI_PROJECT/$STACK_NAME --create
     - pulumi preview --non-interactive --diff
