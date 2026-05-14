@@ -264,6 +264,13 @@ if (existingGitlabProjectId === undefined) {
   gitlabProjectId = repo.id;
   gitlabRepoUrl = repo.httpUrlToRepo;
 
+  new gitlab.BranchProtection("all-branches-protection", {
+    project: gitlabProjectId,
+    branch: "*",
+    pushAccessLevel: "maintainer",
+    mergeAccessLevel: "maintainer",
+  });
+
   const gitignore = `# Dependencies
 node_modules/
 
