@@ -48,7 +48,7 @@ Your custom policy pack must enforce this by reading `requiredCidrBlocks` from t
 
 ### Managed Pack Configuration
 
-Attach the **`hitrust-aws`** managed policy pack to your policy groups in advisory mode. Most of these can be the defaults, but a few need custom configuration.
+Attach the **`hitrust-aws`** managed policy pack to both policy groups. The audit group runs in **Advisory** mode (findings only); the preventative group runs in **Mandatory** mode (blocks deployments). A few rules need custom configuration in both groups.
 
 | Pack          | Rule                         | Expected Setting                           |
 | ------------- | ---------------------------- | ------------------------------------------ |
