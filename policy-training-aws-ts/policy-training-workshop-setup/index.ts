@@ -683,28 +683,31 @@ const workshopDestroyAt = new Date(
   Date.now() + workshopTtlDays * 86400_000,
 ).toISOString();
 
-const setupDeploymentSettings = new pulumiservice.DeploymentSettings(
-  "setup-deployment-settings",
-  {
-    organization: org,
-    project: pulumi.getProject(),
-    stack: pulumi.getStack(),
-    sourceContext: {
-      git: {
-        repoUrl:
-          gitSourceRepo ??
-          "https://github.com/lichtie/ce-workshop-environment-templates",
-        branch: "main",
-        repoDir: "policy-training-aws-ts/policy-training-workshop-setup",
+let setupDeploymentSettings: pulumiservice.DeploymentSettings | undefined;
+if (!process.env.PULUMI_CI) {
+  setupDeploymentSettings = new pulumiservice.DeploymentSettings(
+    "setup-deployment-settings",
+    {
+      organization: org,
+      project: pulumi.getProject(),
+      stack: pulumi.getStack(),
+      sourceContext: {
+        git: {
+          repoUrl:
+            gitSourceRepo ??
+            "https://github.com/lichtie/ce-workshop-environment-templates",
+          branch: "main",
+          repoDir: "policy-training-aws-ts/policy-training-workshop-setup",
+        },
+      },
+      operationContext: {
+        environmentVariables: {
+          PULUMI_ORG: org,
+        },
       },
     },
-    operationContext: {
-      environmentVariables: {
-        PULUMI_ORG: org,
-      },
-    },
-  },
-);
+  );
+}
 
 new pulumiservice.DeploymentSchedule(
   "workshop-ttl",
@@ -715,7 +718,7 @@ new pulumiservice.DeploymentSchedule(
     pulumiOperation: "destroy",
     timestamp: workshopDestroyAt,
   },
-  { dependsOn: setupDeploymentSettings },
+  setupDeploymentSettings ? { dependsOn: setupDeploymentSettings } : {},
 );
 
 // =============================================================================

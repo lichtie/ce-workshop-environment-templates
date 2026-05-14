@@ -63,7 +63,8 @@ const parentStackTtlDays = Number(config.get("parentStackTtlDays") || 18);
 // GitLab user IDs are integers, not usernames. Provide the participant's numeric GitLab user ID.
 // If not provided, GitLab repo membership is skipped.
 const gitlabUserIdRaw = config.get("gitlabUserId") || undefined;
-const gitlabUserId = gitlabUserIdRaw !== undefined ? Number(gitlabUserIdRaw) : undefined;
+const gitlabUserId =
+  gitlabUserIdRaw !== undefined ? Number(gitlabUserIdRaw) : undefined;
 
 // =============================================================================
 // Workshop project slugs — must match sub-directories in the GitLab repo
@@ -335,29 +336,31 @@ if (gitlabUserId !== undefined) {
 // 🔵 Self-Destruct TTL — Allow Override via parentStackTtlDays (default 18)
 // Schedules a destroy of this user-setup stack itself.
 // =============================================================================
-
-const setupDeploymentSettings = new pulumiservice.DeploymentSettings(
-  "setup-deployment-settings",
-  {
-    organization: org,
-    project: pulumi.getProject(),
-    stack: pulumi.getStack(),
-    sourceContext: {
-      git: {
-        repoUrl:
-          gitSourceRepo ??
-          "https://github.com/lichtie/ce-workshop-environment-templates",
-        branch: "main",
-        repoDir: "policy-training-aws-ts/policy-training-user-setup",
+let setupDeploymentSettings: pulumiservice.DeploymentSettings | undefined;
+if (!process.env.PULUMI_CI) {
+  setupDeploymentSettings = new pulumiservice.DeploymentSettings(
+    "setup-deployment-settings",
+    {
+      organization: org,
+      project: pulumi.getProject(),
+      stack: pulumi.getStack(),
+      sourceContext: {
+        git: {
+          repoUrl:
+            gitSourceRepo ??
+            "https://github.com/lichtie/ce-workshop-environment-templates",
+          branch: "main",
+          repoDir: "policy-training-aws-ts/policy-training-user-setup",
+        },
+      },
+      operationContext: {
+        environmentVariables: {
+          PULUMI_ORG: org,
+        },
       },
     },
-    operationContext: {
-      environmentVariables: {
-        PULUMI_ORG: org,
-      },
-    },
-  },
-);
+  );
+}
 
 const parentDestroyAt = new Date(
   Date.now() + parentStackTtlDays * 86400_000,
@@ -372,7 +375,7 @@ new pulumiservice.DeploymentSchedule(
     pulumiOperation: "destroy",
     timestamp: parentDestroyAt,
   },
-  { dependsOn: setupDeploymentSettings },
+  setupDeploymentSettings ? { dependsOn: setupDeploymentSettings } : {},
 );
 
 // =============================================================================
