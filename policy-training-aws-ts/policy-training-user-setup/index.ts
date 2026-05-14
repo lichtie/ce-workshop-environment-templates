@@ -114,32 +114,25 @@ if (!existingTeam) {
 }
 
 // =============================================================================
-// ESC Environment Attachment Hook
-// Fires after each Stack is created and calls the Pulumi Cloud config API to
-// import the shared AWS and required-IPs ESC environments into the stack.
+// Post-DeploymentSettings Hook
+// Fires after DeploymentSettings is created:
+//   1. Attaches the AWS ESC environment to the stack via the config API
+//   2. Kicks off an initial deployment via the deployments API
 // =============================================================================
 
-const attachEnvsHook = new pulumi.ResourceHook("attach-envs", async (args) => {
+const apiRequest = (
+  token: string,
+  method: string,
+  path: string,
+  body: string,
+): Promise<void> => {
   const https = require("https");
-  const stackOrg: string = args.newOutputs?.["organizationName"];
-  const project: string = args.newOutputs?.["projectName"];
-  const stack: string = args.newOutputs?.["stackName"];
-  const token = await tokenPromise;
-  const awsEnv = await awsEnvNamePromise;
-
-  if (!stackOrg || !project || !stack) return;
-
-  const body = JSON.stringify({
-    config: {},
-    environment: `policies-workshop/${awsEnv}`,
-  });
-
-  await new Promise<void>((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     const req = https.request(
       {
         hostname: "api.pulumi.com",
-        path: `/api/stacks/${stackOrg}/${project}/${stack}/config`,
-        method: "PUT",
+        path,
+        method,
         headers: {
           Authorization: `token ${token}`,
           "Content-Type": "application/json",
@@ -160,6 +153,32 @@ const attachEnvsHook = new pulumi.ResourceHook("attach-envs", async (args) => {
     req.write(body);
     req.end();
   });
+};
+
+const deploymentSettingsHook = new pulumi.ResourceHook("deployment-settings-hook", async (args) => {
+  const stackOrg: string = args.newOutputs?.["organization"];
+  const project: string = args.newOutputs?.["project"];
+  const stack: string = args.newOutputs?.["stack"];
+  const token = await tokenPromise;
+  const awsEnv = await awsEnvNamePromise;
+
+  if (!stackOrg || !project || !stack) return;
+
+  // 1. Attach the AWS ESC environment to the stack
+  await apiRequest(
+    token,
+    "PUT",
+    `/api/stacks/${stackOrg}/${project}/${stack}/config`,
+    JSON.stringify({ config: {}, environment: `policies-workshop/${awsEnv}` }),
+  );
+
+  // 2. Kick off an initial deployment
+  await apiRequest(
+    token,
+    "POST",
+    `/api/stacks/${stackOrg}/${project}/${stack}/deployments`,
+    JSON.stringify({ operation: "update", inheritSettings: true }),
+  );
 });
 
 // =============================================================================
@@ -177,11 +196,11 @@ const stackDestroyAt = new Date(
 ).toISOString();
 
 const stacks = projectSlugs.map((slug) => {
-  const stack = new pulumiservice.Stack(
-    `stack-${userKey}-${slug}`,
-    { organizationName: org, projectName: slug, stackName: userKey },
-    { hooks: { afterCreate: [attachEnvsHook] } },
-  );
+  const stack = new pulumiservice.Stack(`stack-${userKey}-${slug}`, {
+    organizationName: org,
+    projectName: slug,
+    stackName: userKey,
+  });
 
   new pulumiservice.StackTags(
     `tags-${userKey}-${slug}`,
@@ -229,7 +248,7 @@ const stacks = projectSlugs.map((slug) => {
         previewPullRequests: true,
       },
     },
-    { dependsOn: stack },
+    { dependsOn: stack, hooks: { afterCreate: [deploymentSettingsHook] } },
   );
 
   new pulumiservice.DeploymentSchedule(
