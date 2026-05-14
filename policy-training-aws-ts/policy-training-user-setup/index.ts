@@ -11,9 +11,9 @@ const config = new pulumi.Config();
 // Required
 const org = pulumi.getOrganization();
 const userKey = config.require("userKey");
-const username = config.get("existingUsername");
+const username = config.get("existingUsername") || undefined;
 const gitSourceRepo =
-  config.get("overrideGithubRepoFork") ??
+  config.get("overrideGithubRepoFork") ||
   "https://github.com/lichtie/ce-workshop-environment-templates";
 const pulumiAccessToken = config.requireSecret("pulumiAccessToken");
 
@@ -56,7 +56,7 @@ const awsEnvNamePromise = new Promise<string>((resolve) => {
 });
 
 // 🔵 Override inputs — skip or customize resource creation if provided
-const existingTeam = config.get("existingTeam");
+const existingTeam = config.get("existingTeam") || undefined;
 const stackTtlDays = config.getNumber("stackTtlDays") ?? 14;
 const parentStackTtlDays = config.getNumber("parentStackTtlDays") ?? 18;
 

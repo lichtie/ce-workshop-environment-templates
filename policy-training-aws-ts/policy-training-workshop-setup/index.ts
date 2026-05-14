@@ -14,14 +14,12 @@ const config = new pulumi.Config();
 const org = pulumi.getOrganization();
 
 // 🔵 Override inputs — skip resource creation if these are set
-const existingGitlabProjectId = config.get("existingGitlabProjectId");
-const existingGitlabRepoUrl = config.get("existingGitlabRepoUrl");
-const gitSourceRepo = config.get("overrideGithubRepoFork");
-const existingAwsRoleArn = config.get("existingAwsRoleArn");
-const existingOidcProviderArn = config.get("existingOidcProviderArn");
-const existingAwsEscEnvironmentName = config.get(
-  "existingAwsEscEnvironmentName",
-);
+const existingGitlabProjectId = config.get("existingGitlabProjectId") || undefined;
+const existingGitlabRepoUrl = config.get("existingGitlabRepoUrl") || undefined;
+const gitSourceRepo = config.get("overrideGithubRepoFork") || undefined;
+const existingAwsRoleArn = config.get("existingAwsRoleArn") || undefined;
+const existingOidcProviderArn = config.get("existingOidcProviderArn") || undefined;
+const existingAwsEscEnvironmentName = config.get("existingAwsEscEnvironmentName") || undefined;
 const workshopTtlDays = config.getNumber("workshopTtlDays") ?? 21;
 
 // 🟠 Always-create inputs — configurable but not overridable
