@@ -16,4 +16,4 @@ The exported CSV is one of your two deliverables for the workshop.
 
 ---
 
-**Previous:** [04 — Enabling the Custom Policy Pack](04-enabling-custom-policy-pack.md)
+**Previous:** [04 — Enabling the Custom Policy Pack](04-enabling-custom-policy-pack.md) | **Next:** [06 — Remediation](06-remediation.md)

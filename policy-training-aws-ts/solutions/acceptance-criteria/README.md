@@ -21,7 +21,9 @@ Export your policy findings from the Pulumi console showing that your policy gro
 
 ### 2. Clean PRs to the Workshop Repo
 
-Open pull requests in the GitLab workshop repo to fix the security issues in your stacks.
+Open pull requests in the GitLab workshop repo to fix the security issues in your stacks. You can use Neo to generate the fixes automatically or update the code manually.
+
+**Branch naming:** branches must start with your username followed by a `-` (e.g. `alice-fix-sg`). The CI pipeline derives the stack name from the branch prefix, so any other format will cause the preview to run against the wrong stack.
 
 **Your PRs must show:**
 

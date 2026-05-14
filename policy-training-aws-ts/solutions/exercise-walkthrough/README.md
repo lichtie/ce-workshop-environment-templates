@@ -7,3 +7,4 @@ Work through the exercises in order:
 3. [Writing a Custom Policy Pack](03-custom-policy-pack.md)
 4. [Enabling the Custom Policy Pack](04-enabling-custom-policy-pack.md)
 5. [Exporting Findings](05-exporting-findings.md)
+6. [Remediation](06-remediation.md)

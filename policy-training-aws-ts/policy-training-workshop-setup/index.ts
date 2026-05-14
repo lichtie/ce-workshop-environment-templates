@@ -221,12 +221,12 @@ stages:
 variables:
   PULUMI_ACCESS_TOKEN: $PULUMI_ACCESS_TOKEN
   PULUMI_ORG: $PULUMI_ORG
-  STACK_NAME: $STACK_NAME
 
 .pulumi_preview: &pulumi_preview
   stage: preview
   before_script:
     - cd $PROJECT_DIR && npm install
+    - STACK_NAME=$(echo "$CI_COMMIT_REF_NAME" | cut -d'-' -f1)
   script:
     - pulumi stack select $PULUMI_ORG/$PULUMI_PROJECT/$STACK_NAME --create
     - pulumi preview --non-interactive --diff
@@ -268,6 +268,43 @@ if (existingGitlabProjectId === undefined) {
   });
   gitlabProjectId = repo.id;
   gitlabRepoUrl = repo.httpUrlToRepo;
+
+  const gitignore = `# Dependencies
+node_modules/
+
+# Compiled output
+bin/
+dist/
+*.js
+*.d.ts
+*.tsbuildinfo
+
+# Pulumi
+.pulumi/
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+`;
+
+  new gitlab.RepositoryFile(
+    "gitignore-file",
+    {
+      project: gitlabProjectId,
+      filePath: ".gitignore",
+      branch: "main",
+      content: b64(gitignore),
+      commitMessage: "chore: add .gitignore",
+      encoding: "base64",
+      authorName: "Pulumi Workshop",
+      authorEmail: "workshop@pulumi.com",
+    },
+    { dependsOn: repo },
+  );
 
   new gitlab.RepositoryFile(
     "ci-file",
