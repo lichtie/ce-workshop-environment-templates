@@ -627,8 +627,8 @@ if (existingAwsEscEnvironmentName === undefined) {
 
 const requiredIpsYaml =
   requiredIps.length > 0
-    ? `values:\n  pulumiConfig:\n    requiredCidrBlocks:\n${requiredIps.map((ip: string) => `      - "${ip}"`).join("\n")}\n`
-    : `values:\n  pulumiConfig:\n    requiredCidrBlocks: []\n`;
+    ? `values:\n  policyConfig:\n    requiredCidrBlocks:\n${requiredIps.map((ip: string) => `      - "${ip}"`).join("\n")}\n`
+    : `values:\n  policyConfig:\n    requiredCidrBlocks: []\n`;
 
 const requiredIpsEnv = new pulumiservice.Environment(
   "required-ips",
