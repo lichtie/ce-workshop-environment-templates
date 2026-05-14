@@ -42,9 +42,9 @@ All resources must have the following tags. These are configured as required tag
 
 ### Required IP Ranges
 
-Security groups and WAF rules must restrict ingress to a list of Cidrs.
+Security groups must include all CIDRs from a required list.
 
-Your custom policy pack must enforce this by reading `requiredCidrBlocks` from the ESC environment and validating every security group ingress rule and WAF IP set against the list.
+Your custom policy pack must enforce this by reading `requiredCidrBlocks` from the ESC environment and verifying that every security group ingress rule contains each required CIDR.
 
 ### Managed Pack Configuration
 
@@ -61,8 +61,7 @@ Attach the **`hitrust-aws`** managed policy pack to both policy groups. The audi
 
 > List what custom rules participants must write:
 
-| Rule                | What it checks                              | Enforcement |
-| ------------------- | ------------------------------------------- | ----------- |
-| Required tags       | Every resource has `user` tag               | warning     |
-| Allowed ingress IPs | Every SG and WAF allows only approved CIDRs | mandatory   |
-| _(add more)_        |                                             |             |
+| Rule                 | What it checks                                                                            | Enforcement |
+| -------------------- | ----------------------------------------------------------------------------------------- | ----------- |
+| Required ingress IPs | Every security group includes all required CIDRs                                          | mandatory   |
+| S3 TLS enforcement   | Every S3 bucket with a `public-read` ACL has a bucket policy that denies non-TLS requests | mandatory   |

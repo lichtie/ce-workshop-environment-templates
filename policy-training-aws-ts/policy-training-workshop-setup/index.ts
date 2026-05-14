@@ -206,57 +206,9 @@ const instance = new aws.ec2.Instance("web-server", {
     tags: { Name: \`\${prefix}-web\` },
 });
 
-// --- WAF ---
-const webAcl = new aws.wafv2.WebAcl("app-waf", {
-    name: \`\${prefix}-waf\`,
-    scope: "REGIONAL",
-    defaultAction: { allow: {} },
-    rules: [
-        {
-            name: "CommonRuleSet",
-            priority: 1,
-            overrideAction: { count: {} },
-            statement: {
-                managedRuleGroupStatement: {
-                    vendorName: "AWS",
-                    name: "AWSManagedRulesCommonRuleSet",
-                },
-            },
-            visibilityConfig: {
-                cloudwatchMetricsEnabled: true,
-                metricName: "CommonRuleSet",
-                sampledRequestsEnabled: false,
-            },
-        },
-        {
-            name: "SQLiRuleSet",
-            priority: 2,
-            overrideAction: { count: {} },
-            statement: {
-                managedRuleGroupStatement: {
-                    vendorName: "AWS",
-                    name: "AWSManagedRulesSQLiRuleSet",
-                },
-            },
-            visibilityConfig: {
-                cloudwatchMetricsEnabled: true,
-                metricName: "SQLiRuleSet",
-                sampledRequestsEnabled: false,
-            },
-        },
-    ],
-    visibilityConfig: {
-        cloudwatchMetricsEnabled: true,
-        metricName: \`\${prefix}-waf\`,
-        sampledRequestsEnabled: false,
-    },
-    tags: { Name: \`\${prefix}-waf\` },
-});
-
 export const bucketName = assetBucket.bucket;
 export const instanceId = instance.id;
 export const publicIp = instance.publicIp;
-export const webAclArn = webAcl.arn;
 `,
   },
 ];
@@ -613,38 +565,6 @@ if (existingAwsRoleArn === undefined) {
           Condition: {
             StringLike: { "ec2:ResourceTag/Name": "policies-wksp-*" },
           },
-        },
-        {
-          Sid: "Wafv2WebAcl",
-          Effect: "Allow",
-          Action: [
-            "wafv2:CreateWebACL",
-            "wafv2:DeleteWebACL",
-            "wafv2:GetWebACL",
-            "wafv2:UpdateWebACL",
-            "wafv2:TagResource",
-            "wafv2:UntagResource",
-            "wafv2:ListTagsForResource",
-            "wafv2:PutLoggingConfiguration",
-            "wafv2:GetLoggingConfiguration",
-            "wafv2:DeleteLoggingConfiguration",
-            "wafv2:ListLoggingConfigurations",
-          ],
-          Resource: [
-            `arn:aws:wafv2:${awsRegion}:${accountId}:regional/webacl/policies-wksp-*`,
-            // CreateWebACL and UpdateWebACL also require permission on any managed rule sets
-            // referenced in the rules list.
-            `arn:aws:wafv2:${awsRegion}:${accountId}:regional/managedruleset/*/*`,
-          ],
-        },
-        {
-          Sid: "Wafv2ManagedRules",
-          Effect: "Allow",
-          // CheckCapacity and DescribeManagedRuleGroup operate on AWS-owned managed rule groups
-          // (not user-owned WebACLs), so Resource:"*" is unavoidable. Region condition limits scope.
-          Action: ["wafv2:CheckCapacity", "wafv2:DescribeManagedRuleGroup"],
-          Resource: "*",
-          Condition: { StringEquals: { "aws:RequestedRegion": awsRegion } },
         },
       ],
     }),
