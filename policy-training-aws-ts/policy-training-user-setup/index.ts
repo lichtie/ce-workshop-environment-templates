@@ -12,7 +12,16 @@ const config = new pulumi.Config();
 const org = pulumi.getOrganization();
 const userKey = config.require("userKey");
 const username = config.require("existingUsername");
-const gitSourceRepo = config.get("overrideGithubRepoFork");
+const gitSourceRepo = config.get("overrideGithubRepoFork") ?? "https://github.com/lichtie/ce-workshop-environment-templates";
+const pulumiAccessToken = config.requireSecret("pulumiAccessToken");
+
+// Resolve secrets/outputs into Promises so they can be used inside ResourceHooks
+const tokenPromise = new Promise<string>((resolve) => {
+  pulumiAccessToken.apply((t) => {
+    resolve(t);
+    return t;
+  });
+});
 
 // Workshop stack reference — reads shared outputs from policy-training-workshop-setup
 // Format: "<org>/policy-training-workshop-setup/<stack-name>"
@@ -24,6 +33,9 @@ const workshopStack = new pulumi.StackReference("workshop-stack", {
 const gitlabRepoUrl = workshopStack
   .getOutput("gitlabRepoUrl")
   .apply((v) => String(v));
+const gitlabRepoPath = gitlabRepoUrl.apply((url) =>
+  new URL(url).pathname.replace(/^\//, "").replace(/\.git$/, ""),
+);
 const awsEscEnvironmentName = workshopStack
   .getOutput("awsEscEnvironmentNameOut")
   .apply((v) => String(v));
@@ -33,6 +45,13 @@ const requiredIpsEnvironmentNameOut = workshopStack
 const gitlabProjectId = workshopStack
   .getOutput("gitlabProjectId")
   .apply((v) => String(v));
+
+const awsEnvNamePromise = new Promise<string>((resolve) => {
+  awsEscEnvironmentName.apply((n) => {
+    resolve(n);
+    return n;
+  });
+});
 
 // 🔵 Override inputs — skip or customize resource creation if provided
 const existingTeam = config.get("existingTeam");
@@ -48,12 +67,7 @@ const gitlabUserId = config.getNumber("gitlabUserId");
 // and project names in Pulumi Cloud.
 // =============================================================================
 
-const projectSlugs = [
-  "s3-website",
-  "rds-database",
-  "ec2-instance",
-  "waf-config",
-];
+const projectSlugs = ["web-app"];
 
 // =============================================================================
 // Per-user Team
@@ -100,6 +114,55 @@ if (!existingTeam) {
 }
 
 // =============================================================================
+// ESC Environment Attachment Hook
+// Fires after each Stack is created and calls the Pulumi Cloud config API to
+// import the shared AWS and required-IPs ESC environments into the stack.
+// =============================================================================
+
+const attachEnvsHook = new pulumi.ResourceHook("attach-envs", async (args) => {
+  const https = require("https");
+  const stackOrg: string = args.newOutputs?.["organizationName"];
+  const project: string = args.newOutputs?.["projectName"];
+  const stack: string = args.newOutputs?.["stackName"];
+  const token = await tokenPromise;
+  const awsEnv = await awsEnvNamePromise;
+
+  if (!stackOrg || !project || !stack) return;
+
+  const body = JSON.stringify({
+    config: {},
+    environment: `policies-workshop/${awsEnv}`,
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: "api.pulumi.com",
+        path: `/api/stacks/${stackOrg}/${project}/${stack}/config`,
+        method: "PUT",
+        headers: {
+          Authorization: `token ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/vnd.pulumi+8",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res: any) => {
+        let data = "";
+        res.on("data", (chunk: any) => (data += chunk));
+        res.on("end", () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve();
+          else reject(new Error(`Pulumi API ${res.statusCode}: ${data}`));
+        });
+      },
+    );
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+});
+
+// =============================================================================
 // 🟠 Per-Stack Resources
 // For each project: stack → tags → team permission → deployment settings → TTL
 // =============================================================================
@@ -114,11 +177,11 @@ const stackDestroyAt = new Date(
 ).toISOString();
 
 const stacks = projectSlugs.map((slug) => {
-  const stack = new pulumiservice.Stack(`stack-${userKey}-${slug}`, {
-    organizationName: org,
-    projectName: slug,
-    stackName: userKey,
-  });
+  const stack = new pulumiservice.Stack(
+    `stack-${userKey}-${slug}`,
+    { organizationName: org, projectName: slug, stackName: userKey },
+    { hooks: { afterCreate: [attachEnvsHook] } },
+  );
 
   new pulumiservice.StackTags(
     `tags-${userKey}-${slug}`,
@@ -160,7 +223,7 @@ const stacks = projectSlugs.map((slug) => {
       },
       vcs: {
         provider: "gitlab",
-        repository: "lichtie-group/policy-training-workshop",
+        repository: gitlabRepoPath,
         deployCommits: true,
         installationId: "4defa6f1-756b-4194-93ce-42e2272b1286",
         previewPullRequests: true,

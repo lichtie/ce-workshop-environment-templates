@@ -53,14 +53,14 @@ See [`policy-training-user-setup/README.md`](./policy-training-user-setup/README
 
 ## The four workshop projects
 
-Each project deploys a common AWS workload pattern with intentional misconfigurations for participants to find and fix:
+One stack (`web-app`) deploys a combined web application with intentional misconfigurations for participants to find and fix:
 
-| Project        | Workload       | Key issues                                                                  |
-| -------------- | -------------- | --------------------------------------------------------------------------- |
-| `s3-website`   | S3 static site | Public-read ACL, no encryption, no versioning, missing tags                 |
-| `rds-database` | RDS PostgreSQL | Port 5432 open to internet, no encryption, no backups, missing tags         |
-| `ec2-instance` | EC2 web server | SSH open to internet, IMDSv2 optional, unencrypted EBS, missing tags        |
-| `waf-config`   | WAF WebACL     | Rules in `COUNT` mode, no rate-based rule, no request logging, missing tags |
+| Resource       | Key issues                                                                 |
+| -------------- | -------------------------------------------------------------------------- |
+| S3 bucket      | Public-read ACL, public access block disabled, missing `user`/`wksp` tags |
+| Security group | SSH open to `0.0.0.0/0`, missing tags                                      |
+| EC2 instance   | IMDSv2 optional, unencrypted EBS, missing tags                             |
+| WAF WebACL     | Rules in `COUNT` mode, sampling disabled, missing tags                     |
 
 ---
 
