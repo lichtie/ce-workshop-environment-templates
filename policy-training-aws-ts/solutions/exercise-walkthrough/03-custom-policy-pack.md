@@ -90,4 +90,16 @@ See the full implementation in [`solutions/artifacts/policy-pack/index.ts`](../.
 
 ---
 
+## Step 7 — Publish the Policy Pack
+
+From your policy pack directory, run:
+
+```bash
+pulumi policy publish <your-org>
+```
+
+This uploads your pack to Pulumi Cloud and makes it available to attach to policy groups. Each publish creates a new version — you'll see it listed under **Policies** in the console.
+
+---
+
 **Previous:** [02 — Preventative Policy Setup](02-preventative-policy-setup.md)
