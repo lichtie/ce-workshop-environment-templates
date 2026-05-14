@@ -1,3 +1,36 @@
 name: policy-training-workshop-setup
 runtime: nodejs
 description: Workshop-level shared resources for the policy-as-code training workshop
+
+template:
+  displayName: Policy Training Workshop Setup
+  description: |
+    Creates shared infrastructure for the policy-as-code training workshop.
+    Run once per cohort before provisioning individual participant stacks.
+  config:
+    gitlabGroupPath:
+      description: GitLab group path where the workshop repository will be created (e.g. my-org/workshops)
+    aws:region:
+      description: AWS region to deploy workshop resources into
+      default: us-west-2
+    workshopTtlDays:
+      description: Days until this workshop-setup stack is auto-destroyed (default 21)
+      default: "21"
+    requiredIps:
+      description: JSON array of CIDR blocks to enforce in security group policies (e.g. ["203.0.113.0/24"])
+      default: "[]"
+    gitlabVisibility:
+      description: Visibility of the created GitLab repository
+      default: private
+    existingGitlabProjectId:
+      description: "(Override) Existing GitLab project ID — skips repository creation"
+    existingGitlabRepoUrl:
+      description: "(Override) HTTP URL of the existing GitLab repo — required when existingGitlabProjectId is set"
+    existingAwsRoleArn:
+      description: "(Override) Existing IAM role ARN — skips role creation"
+    existingOidcProviderArn:
+      description: "(Override) Existing OIDC provider ARN — skips provider creation (only used when existingAwsRoleArn is not set)"
+    existingAwsEscEnvironmentName:
+      description: "(Override) Existing ESC environment name — skips AWS integration environment creation"
+    overrideGithubRepoFork:
+      description: "(Override) GitHub repo URL to use as the Pulumi Deployments source (defaults to the official template repo)"

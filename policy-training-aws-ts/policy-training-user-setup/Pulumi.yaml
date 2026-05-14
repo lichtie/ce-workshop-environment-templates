@@ -1,3 +1,28 @@
 name: policy-training-user-setup
 runtime: nodejs
 description: Per-participant resources for the policy-as-code training workshop
+
+template:
+  displayName: Policy Training User Setup
+  description: |
+    Creates per-participant resources for the policy-as-code training workshop.
+    Run once per participant after policy-training-workshop-setup has been deployed.
+  config:
+    userKey:
+      description: Short unique key for this participant — used in resource names and as the Pulumi stack name (e.g. jsmith)
+    workshopStackRef:
+      description: Fully-qualified stack reference for the workshop-setup stack (e.g. myorg/policy-training-workshop-setup/dev)
+    existingUsername:
+      description: Pulumi username of the participant — used to add them to the per-user team (optional)
+    gitlabUserId:
+      description: Numeric GitLab user ID for the participant — used to grant repo access (optional; omit to skip)
+    stackTtlDays:
+      description: Days until participant stacks are auto-destroyed (default 14)
+      default: "14"
+    parentStackTtlDays:
+      description: Days until this user-setup stack itself is auto-destroyed (default 18)
+      default: "18"
+    existingTeam:
+      description: "(Override) Existing Pulumi team name — skips per-user team creation"
+    overrideGithubRepoFork:
+      description: "(Override) GitHub repo URL to use as the Pulumi Deployments source (defaults to the official template repo)"
