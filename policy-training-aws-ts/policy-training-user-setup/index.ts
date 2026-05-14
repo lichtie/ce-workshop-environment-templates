@@ -11,8 +11,10 @@ const config = new pulumi.Config();
 // Required
 const org = pulumi.getOrganization();
 const userKey = config.require("userKey");
-const username = config.require("existingUsername");
-const gitSourceRepo = config.get("overrideGithubRepoFork") ?? "https://github.com/lichtie/ce-workshop-environment-templates";
+const username = config.get("existingUsername");
+const gitSourceRepo =
+  config.get("overrideGithubRepoFork") ??
+  "https://github.com/lichtie/ce-workshop-environment-templates";
 const pulumiAccessToken = config.requireSecret("pulumiAccessToken");
 
 // Resolve secrets/outputs into Promises so they can be used inside ResourceHooks
@@ -74,7 +76,7 @@ const projectSlugs = ["web-app"];
 // Used for TeamStackPermission and TeamEnvironmentPermission.
 // =============================================================================
 let userTeam: pulumiservice.Team | undefined;
-if (!existingTeam) {
+if (!existingTeam && username) {
   userTeam = new pulumiservice.Team(`team-${userKey}`, {
     organizationName: org,
     teamType: "pulumi",
@@ -155,31 +157,37 @@ const apiRequest = (
   });
 };
 
-const deploymentSettingsHook = new pulumi.ResourceHook("deployment-settings-hook", async (args) => {
-  const stackOrg: string = args.newOutputs?.["organization"];
-  const project: string = args.newOutputs?.["project"];
-  const stack: string = args.newOutputs?.["stack"];
-  const token = await tokenPromise;
-  const awsEnv = await awsEnvNamePromise;
+const deploymentSettingsHook = new pulumi.ResourceHook(
+  "deployment-settings-hook",
+  async (args) => {
+    const stackOrg: string = args.newOutputs?.["organization"];
+    const project: string = args.newOutputs?.["project"];
+    const stack: string = args.newOutputs?.["stack"];
+    const token = await tokenPromise;
+    const awsEnv = await awsEnvNamePromise;
 
-  if (!stackOrg || !project || !stack) return;
+    if (!stackOrg || !project || !stack) return;
 
-  // 1. Attach the AWS ESC environment to the stack
-  await apiRequest(
-    token,
-    "PUT",
-    `/api/stacks/${stackOrg}/${project}/${stack}/config`,
-    JSON.stringify({ config: {}, environment: `policies-workshop/${awsEnv}` }),
-  );
+    // 1. Attach the AWS ESC environment to the stack
+    await apiRequest(
+      token,
+      "PUT",
+      `/api/stacks/${stackOrg}/${project}/${stack}/config`,
+      JSON.stringify({
+        config: {},
+        environment: `policies-workshop/${awsEnv}`,
+      }),
+    );
 
-  // 2. Kick off an initial deployment
-  await apiRequest(
-    token,
-    "POST",
-    `/api/stacks/${stackOrg}/${project}/${stack}/deployments`,
-    JSON.stringify({ operation: "update", inheritSettings: true }),
-  );
-});
+    // 2. Kick off an initial deployment
+    await apiRequest(
+      token,
+      "POST",
+      `/api/stacks/${stackOrg}/${project}/${stack}/deployments`,
+      JSON.stringify({ operation: "update", inheritSettings: true }),
+    );
+  },
+);
 
 // =============================================================================
 // 🟠 Per-Stack Resources
