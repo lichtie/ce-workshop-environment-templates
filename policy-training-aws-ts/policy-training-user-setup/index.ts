@@ -336,31 +336,29 @@ if (gitlabUserId !== undefined) {
 // 🔵 Self-Destruct TTL — Allow Override via parentStackTtlDays (default 18)
 // Schedules a destroy of this user-setup stack itself.
 // =============================================================================
-let setupDeploymentSettings: pulumiservice.DeploymentSettings | undefined;
-if (!process.env.PULUMI_CI) {
-  setupDeploymentSettings = new pulumiservice.DeploymentSettings(
-    "setup-deployment-settings",
-    {
-      organization: org,
-      project: pulumi.getProject(),
-      stack: pulumi.getStack(),
-      sourceContext: {
-        git: {
-          repoUrl:
-            gitSourceRepo ??
-            "https://github.com/lichtie/ce-workshop-environment-templates",
-          branch: "main",
-          repoDir: "policy-training-aws-ts/policy-training-user-setup",
-        },
-      },
-      operationContext: {
-        environmentVariables: {
-          PULUMI_ORG: org,
-        },
-      },
-    },
-  );
-}
+// TODO: uncomment if deploying locally
+// const setupDeploymentSettings = new pulumiservice.DeploymentSettings(
+//   "setup-deployment-settings",
+//   {
+//     organization: org,
+//     project: pulumi.getProject(),
+//     stack: pulumi.getStack(),
+//     sourceContext: {
+//       git: {
+//         repoUrl:
+//           gitSourceRepo ??
+//           "https://github.com/lichtie/ce-workshop-environment-templates",
+//         branch: "main",
+//         repoDir: "policy-training-aws-ts/policy-training-user-setup",
+//       },
+//     },
+//     operationContext: {
+//       environmentVariables: {
+//         PULUMI_ORG: org,
+//       },
+//     },
+//   },
+// );
 
 const parentDestroyAt = new Date(
   Date.now() + parentStackTtlDays * 86400_000,
@@ -375,7 +373,8 @@ new pulumiservice.DeploymentSchedule(
     pulumiOperation: "destroy",
     timestamp: parentDestroyAt,
   },
-  setupDeploymentSettings ? { dependsOn: setupDeploymentSettings } : {},
+  // TODO: uncomment if deploying locally
+  // { dependsOn: setupDeploymentSettings },
 );
 
 // =============================================================================
