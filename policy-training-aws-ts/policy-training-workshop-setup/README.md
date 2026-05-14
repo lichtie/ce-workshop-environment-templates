@@ -27,10 +27,10 @@ Provisions the **shared infrastructure** for a policy-as-code training workshop.
 
 ### Optional
 
-| Key               | Description                                                          | Default |
-| ----------------- | -------------------------------------------------------------------- | ------- |
-| `allowedIps`      | JSON array of CIDRs added to the `policies-wksp-allowed-ips` ESC env | `[]`    |
-| `workshopTtlDays` | Days until this stack self-destructs                                 | `21`    |
+| Key               | Description                                                           | Default |
+| ----------------- | --------------------------------------------------------------------- | ------- |
+| `requiredIps`     | JSON array of CIDRs added to the `policies-wksp-required-ips` ESC env | `[]`    |
+| `workshopTtlDays` | Days until this stack self-destructs                                  | `21`    |
 
 ### Override inputs
 
@@ -63,7 +63,7 @@ Set these to skip creating the corresponding resource and use an existing one in
 
 - **Team** — `policies-wksp-participants` (members added per-user by `user-setup`)
 - **ESC environment** — `policies-workshop/policies-wksp-aws-integration`; vends short-lived AWS credentials via OIDC
-- **ESC environment** — `policies-workshop/policies-wksp-allowed-ips`; holds `allowedCidrBlocks` config consumed by custom policies
+- **ESC environment** — `policies-workshop/policies-wksp-required-ips`; holds `requiredCidrBlocks` config consumed by custom policies
 - **TTL self-destruct** — scheduled destroy `workshopTtlDays` days after deploy
 
 ---

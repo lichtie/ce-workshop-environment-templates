@@ -31,7 +31,7 @@ Run once by the workshop administrator before participants arrive. Provisions al
 
 - A **GitLab repository** containing four Pulumi projects with intentional AWS security issues
 - An **AWS OIDC provider and IAM role** so Pulumi Deployments can assume credentials without static keys
-- Two **ESC environments** (`policies-workshop` project) — one for AWS credential integration, one for allowed-IP policy config
+- Two **ESC environments** (`policies-workshop` project) — one for AWS credential integration, one for required-IP policy config
 - A **Pulumi team** for participant access
 - A **self-destruct TTL** so the environment cleans itself up automatically
 
@@ -55,12 +55,12 @@ See [`policy-training-user-setup/README.md`](./policy-training-user-setup/README
 
 Each project deploys a common AWS workload pattern with intentional misconfigurations for participants to find and fix:
 
-| Project        | Workload         | Key issues                                                                        |
-| -------------- | ---------------- | --------------------------------------------------------------------------------- |
-| `s3-website`   | S3 static site   | Public-read ACL, no encryption, no versioning, missing tags                       |
-| `rds-database` | RDS PostgreSQL   | Port 5432 open to internet, no encryption, no backups, missing tags               |
-| `ec2-instance` | EC2 web server   | SSH open to internet, IMDSv2 optional, unencrypted EBS, missing tags              |
-| `waf-config` | WAF WebACL       | Rules in `COUNT` mode, no rate-based rule, no request logging, missing tags       |
+| Project        | Workload       | Key issues                                                                  |
+| -------------- | -------------- | --------------------------------------------------------------------------- |
+| `s3-website`   | S3 static site | Public-read ACL, no encryption, no versioning, missing tags                 |
+| `rds-database` | RDS PostgreSQL | Port 5432 open to internet, no encryption, no backups, missing tags         |
+| `ec2-instance` | EC2 web server | SSH open to internet, IMDSv2 optional, unencrypted EBS, missing tags        |
+| `waf-config`   | WAF WebACL     | Rules in `COUNT` mode, no rate-based rule, no request logging, missing tags |
 
 ---
 

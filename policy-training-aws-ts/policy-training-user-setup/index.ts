@@ -27,8 +27,8 @@ const gitlabRepoUrl = workshopStack
 const awsEscEnvironmentName = workshopStack
   .getOutput("awsEscEnvironmentNameOut")
   .apply((v) => String(v));
-const allowedIpsEnvironmentNameOut = workshopStack
-  .getOutput("allowedIpsEnvironmentNameOut")
+const requiredIpsEnvironmentNameOut = workshopStack
+  .getOutput("requiredIpsEnvironmentNameOut")
   .apply((v) => String(v));
 const gitlabProjectId = workshopStack
   .getOutput("gitlabProjectId")
@@ -87,12 +87,12 @@ if (!existingTeam) {
   );
 
   new pulumiservice.TeamEnvironmentPermission(
-    `env-perm-allowed-ips-${userKey}`,
+    `env-perm-required-ips-${userKey}`,
     {
       organization: org,
       team: userTeam.name.apply((n) => n!),
       project: "policies-workshop",
-      environment: allowedIpsEnvironmentNameOut,
+      environment: requiredIpsEnvironmentNameOut,
       permission: "open",
     },
     { dependsOn: userTeam },

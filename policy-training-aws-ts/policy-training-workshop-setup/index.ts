@@ -25,7 +25,7 @@ const existingAwsEscEnvironmentName = config.get(
 const workshopTtlDays = config.getNumber("workshopTtlDays") ?? 21;
 
 // 🟠 Always-create inputs — configurable but not overridable
-const allowedIps = config.getObject<string[]>("allowedIps") ?? [];
+const requiredIps = config.getObject<string[]>("requiredIps") ?? [];
 
 // Other optional
 const gitlabGroupPath = config.require("gitlabGroupPath");
@@ -763,23 +763,23 @@ if (existingAwsEscEnvironmentName === undefined) {
 }
 
 // =============================================================================
-// 🟠 ESC Environment: Allowed IPs — Always Create
+// 🟠 ESC Environment: Required IPs — Always Create
 // Used by custom policies that restrict which CIDR blocks are permitted in
 // security groups and other network resources.
 // =============================================================================
 
-const allowedIpsYaml =
-  allowedIps.length > 0
-    ? `values:\n  pulumiConfig:\n    allowedCidrBlocks:\n${allowedIps.map((ip: string) => `      - "${ip}"`).join("\n")}\n`
-    : `values:\n  pulumiConfig:\n    allowedCidrBlocks: []\n`;
+const requiredIpsYaml =
+  requiredIps.length > 0
+    ? `values:\n  pulumiConfig:\n    requiredCidrBlocks:\n${requiredIps.map((ip: string) => `      - "${ip}"`).join("\n")}\n`
+    : `values:\n  pulumiConfig:\n    requiredCidrBlocks: []\n`;
 
-const allowedIpsEnv = new pulumiservice.Environment(
-  "allowed-ips",
+const requiredIpsEnv = new pulumiservice.Environment(
+  "required-ips",
   {
     organization: org,
     project: "policies-workshop",
-    name: "policies-wksp-allowed-ips",
-    yaml: new pulumi.asset.StringAsset(allowedIpsYaml),
+    name: "policies-wksp-required-ips",
+    yaml: new pulumi.asset.StringAsset(requiredIpsYaml),
   },
   { hooks: { afterCreate: [tagEnvWksp] } },
 );
@@ -835,6 +835,6 @@ new pulumiservice.DeploymentSchedule(
 
 export { gitlabProjectId, gitlabRepoUrl };
 export const awsRoleArnOut = awsRoleArn;
-export const allowedIpsEnvironmentNameOut = allowedIpsEnv.name;
+export const requiredIpsEnvironmentNameOut = requiredIpsEnv.name;
 export const awsEscEnvironmentNameOut = awsEnvName;
 export const workshopTtlScheduledDestroyAt = workshopDestroyAt;
