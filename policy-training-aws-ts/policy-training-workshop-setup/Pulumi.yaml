@@ -1,4 +1,4 @@
-name: policy-training-workshop-setup
+name: ${PROJECT}
 runtime: nodejs
 description: Workshop-level shared resources for the policy-as-code training workshop
 

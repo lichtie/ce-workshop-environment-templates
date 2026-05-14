@@ -1,4 +1,4 @@
-name: policy-training-user-setup
+name: ${PROJECT}
 runtime: nodejs
 description: Per-participant resources for the policy-as-code training workshop
 
