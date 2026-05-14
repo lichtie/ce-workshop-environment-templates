@@ -30,9 +30,9 @@ policy-training-aws-ts/
 Run once by the workshop administrator before participants arrive. Provisions all shared infrastructure:
 
 - A **GitLab repository** containing four Pulumi projects with intentional AWS security issues
-- An **AWS IAM role** with OIDC trust so Pulumi Deployments can assume it without static credentials
-- Two **ESC environments** — one for AWS credential integration, one for allowed-IP policy config
-- A **Pulumi team** and **org role** for participant access
+- An **AWS OIDC provider and IAM role** so Pulumi Deployments can assume credentials without static keys
+- Two **ESC environments** (`policies-workshop` project) — one for AWS credential integration, one for allowed-IP policy config
+- A **Pulumi team** for participant access
 - A **self-destruct TTL** so the environment cleans itself up automatically
 
 See [`policy-training-workshop-setup/README.md`](./policy-training-workshop-setup/README.md) for setup instructions.
@@ -47,7 +47,7 @@ Run once per participant (can be scripted for large cohorts). Provisions per-par
 - **GitLab repo access** so the participant can push code
 - **Per-stack and self-destruct TTLs** that auto-clean after the workshop ends
 
-See [`policy-training-user-setup/README.md`](./policy-training-user-setup/README.md) for participant-facing guidance.
+See [`policy-training-user-setup/README.md`](./policy-training-user-setup/README.md) for admin onboarding guidance.
 
 ---
 
@@ -94,4 +94,4 @@ For large cohorts, wrap the user-setup block in a script that iterates over a li
 
 ## Resource naming
 
-All workshop AWS resources use the prefix `wksp-<username>-` (e.g., `wksp-alice-api`). This is intentional — it lets the deploy IAM role's resource policies be scoped to `wksp-*`, preventing participants from accidentally (or deliberately) touching anything outside the workshop.
+All workshop AWS resources use the prefix `policies-wksp-<username>-` (e.g., `policies-wksp-alice-site`). This is intentional — the deploy IAM role's resource policies are scoped to `policies-wksp-*`, preventing participants from touching anything outside the workshop.

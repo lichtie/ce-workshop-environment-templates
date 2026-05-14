@@ -832,6 +832,6 @@ new pulumiservice.DeploymentSchedule(
 
 export { gitlabProjectId, gitlabRepoUrl };
 export const awsRoleArnOut = awsRoleArn;
-export const allowedIpsEnvironmentName = allowedIpsEnv.name;
-export const awsEscEnvironmentName = awsEnvName;
+export const allowedIpsEnvironmentNameOut = allowedIpsEnv.name;
+export const awsEscEnvironmentNameOut = awsEnvName;
 export const workshopTtlScheduledDestroyAt = workshopDestroyAt;

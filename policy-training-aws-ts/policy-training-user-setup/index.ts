@@ -10,7 +10,8 @@ const config = new pulumi.Config();
 
 // Required
 const org = pulumi.getOrganization();
-const username = config.require("username");
+const userKey = config.require("userKey");
+const username = config.require("existingUsername");
 
 // Workshop stack reference — reads shared outputs from policy-training-workshop-setup
 // Format: "<org>/policy-training-workshop-setup/<stack-name>"
@@ -25,24 +26,20 @@ const gitlabRepoUrl = workshopStack
 const awsEscEnvironmentName = workshopStack
   .getOutput("awsEscEnvironmentNameOut")
   .apply((v) => String(v));
-const participantTeamName = workshopStack
-  .getOutput("participantTeamNameOut")
+const allowedIpsEnvironmentNameOut = workshopStack
+  .getOutput("allowedIpsEnvironmentNameOut")
+  .apply((v) => String(v));
+const gitlabProjectId = workshopStack
+  .getOutput("gitlabProjectId")
   .apply((v) => String(v));
 
-// Override the GitLab project ID if it differs from the workshop stack output
-const gitlabProjectIdOverride = config.get("existingGitlabProjectId");
-const gitlabProjectId =
-  gitlabProjectIdOverride !== undefined
-    ? pulumi.output(gitlabProjectIdOverride)
-    : workshopStack.getOutput("gitlabProjectId").apply((v) => String(v));
-
 // 🔵 Override inputs — skip or customize resource creation if provided
-const existingCustomRoleName = config.get("existingCustomRoleName");
+const existingTeam = config.get("existingTeam");
 const stackTtlDays = config.getNumber("stackTtlDays") ?? 14;
 const parentStackTtlDays = config.getNumber("parentStackTtlDays") ?? 18;
-const deployBranch = config.get("deployBranch") ?? "main";
-const extraStackTags =
-  config.getObject<Record<string, string>>("extraStackTags") ?? {};
+
+const extraStackTags = { "wksp-user": userKey };
+
 // GitLab user IDs are integers, not usernames. Provide the participant's numeric GitLab user ID.
 // If not provided, GitLab repo membership is skipped.
 const gitlabUserId = config.getNumber("gitlabUserId");
@@ -52,80 +49,56 @@ const gitlabUserId = config.getNumber("gitlabUserId");
 // and project names in Pulumi Cloud.
 // =============================================================================
 
-const projectSlugs = ["s3-website", "rds-database", "ec2-instance", "waf-config"];
-
-// =============================================================================
-// Org Member
-// Ensures the participant exists as a member of the Pulumi organization.
-// =============================================================================
-
-const orgMember = new pulumiservice.OrganizationMember(`member-${username}`, {
-  organizationName: org,
-  username: username,
-  role: "member",
-});
+const projectSlugs = [
+  "s3-website",
+  "rds-database",
+  "ec2-instance",
+  "waf-config",
+];
 
 // =============================================================================
 // Per-user Team
 // Used for TeamStackPermission and TeamEnvironmentPermission.
 // =============================================================================
-
-const userTeam = new pulumiservice.Team(
-  `team-${username}`,
-  {
+let userTeam;
+if (!existingTeam) {
+  userTeam = new pulumiservice.Team(`team-${userKey}`, {
     organizationName: org,
     teamType: "pulumi",
-    name: `${username}-team`,
-    displayName: `${username} Workshop Team`,
-    description: `Scoped team for workshop participant ${username}`,
+    name: `${userKey}-team`,
+    displayName: `${userKey} Workshop Team`,
+    description: `Scoped team for workshop participant ${userKey}`,
     members: [username],
-  },
-  { dependsOn: orgMember },
-);
-
-// =============================================================================
-// 🔵 Custom Role — Allow Override with Config
-// Intended to scope permissions to stacks tagged user: <username>.
-// Tag-based RBAC is not natively supported in Pulumi roles; actual per-stack
-// scoping is enforced via TeamStackPermission below.
-// TODO: Fill in the permissions object using your org's RBAC wire grammar.
-// =============================================================================
-
-let customRoleName: pulumi.Output<string>;
-let customRoleId: pulumi.Output<string>;
-let customRoleDep: pulumiservice.OrganizationRole | undefined;
-
-if (existingCustomRoleName === undefined) {
-  // stack:read lets the participant see their stacks in the Pulumi console.
-  // The actual edit/admin scoping per stack is enforced by TeamStackPermission below.
-  const userPermissions = pulumiservice.buildAllowPermissionsOutput({
-    permissions: ["stack:read", "environment:open"],
   });
-  const customRole = new pulumiservice.OrganizationRole(`role-${username}`, {
-    organizationName: org,
-    name: `${username}-role`,
-    description: `Custom role for ${username}. Scoped to stacks tagged user:${username} via TeamStackPermission.`,
-    resourceType: "global",
-    permissions: userPermissions.permissions,
-  });
-  customRoleName = customRole.name.apply((n) => n!);
-  customRoleId = customRole.roleId;
-  customRoleDep = customRole;
-} else {
-  customRoleName = pulumi.output(existingCustomRoleName);
-  customRoleId = pulumi.output(existingCustomRoleName);
+
+  // =============================================================================
+  // Team Environment Permissions — open access to the shared AWS ESC environment
+  // =============================================================================
+
+  new pulumiservice.TeamEnvironmentPermission(
+    `env-perm-${userKey}`,
+    {
+      organization: org,
+      team: userTeam.name.apply((n) => n!),
+      project: "policies-workshop",
+      environment: awsEscEnvironmentName,
+      permission: "open",
+    },
+    { dependsOn: userTeam },
+  );
+
+  new pulumiservice.TeamEnvironmentPermission(
+    `env-perm-${userKey}`,
+    {
+      organization: org,
+      team: userTeam.name.apply((n) => n!),
+      project: "policies-workshop",
+      environment: allowedIpsEnvironmentNameOut,
+      permission: "open",
+    },
+    { dependsOn: userTeam },
+  );
 }
-
-// Assign the custom role to the user's team
-new pulumiservice.TeamRoleAssignment(
-  `role-assignment-${username}`,
-  {
-    organizationName: org,
-    teamName: userTeam.name.apply((n) => n!),
-    roleId: customRoleId,
-  },
-  { dependsOn: customRoleDep ? [userTeam, customRoleDep] : [userTeam] },
-);
 
 // =============================================================================
 // 🟠 Stacks — Always Create
@@ -134,10 +107,10 @@ new pulumiservice.TeamRoleAssignment(
 
 const stacks = projectSlugs.map(
   (slug) =>
-    new pulumiservice.Stack(`stack-${username}-${slug}`, {
+    new pulumiservice.Stack(`stack-${userKey}-${slug}`, {
       organizationName: org,
       projectName: slug,
-      stackName: username,
+      stackName: userKey,
     }),
 );
 
@@ -145,15 +118,19 @@ const stacks = projectSlugs.map(
 // 🔵 Stack Tags — Allow Override (extraStackTags merged with base tags)
 // =============================================================================
 
-const allStackTags = { user: username, wksp: "policies-training", ...extraStackTags };
+const allStackTags = {
+  user: userKey,
+  wksp: "policies-training",
+  ...extraStackTags,
+};
 
 projectSlugs.forEach((slug, i) => {
   new pulumiservice.StackTags(
-    `tags-${username}-${slug}`,
+    `tags-${userKey}-${slug}`,
     {
       organization: org,
       project: slug,
-      stack: username,
+      stack: userKey,
       tags: allStackTags,
     },
     { dependsOn: stacks[i] },
@@ -167,33 +144,17 @@ projectSlugs.forEach((slug, i) => {
 
 projectSlugs.forEach((slug, i) => {
   new pulumiservice.TeamStackPermission(
-    `stack-perm-${username}-${slug}`,
+    `stack-perm-${userKey}-${slug}`,
     {
       organization: org,
       team: userTeam.name.apply((n) => n!),
       project: slug,
-      stack: username,
+      stack: userKey,
       permission: 102, // 101=read, 102=edit, 103=admin
     },
     { dependsOn: [userTeam, stacks[i]] },
   );
 });
-
-// =============================================================================
-// Team Environment Permission — open access to the shared AWS ESC environment
-// =============================================================================
-
-new pulumiservice.TeamEnvironmentPermission(
-  `env-perm-${username}`,
-  {
-    organization: org,
-    team: userTeam.name.apply((n) => n!),
-    project: "default",
-    environment: awsEscEnvironmentName,
-    permission: "open",
-  },
-  { dependsOn: userTeam },
-);
 
 // =============================================================================
 // 🔵 Deployment Settings — Allow Override (branch, VCS kind)
@@ -207,22 +168,22 @@ new pulumiservice.TeamEnvironmentPermission(
 
 projectSlugs.forEach((slug, i) => {
   new pulumiservice.DeploymentSettings(
-    `deploy-${username}-${slug}`,
+    `deploy-${userKey}-${slug}`,
     {
       organization: org,
       project: slug,
-      stack: username,
+      stack: userKey,
       sourceContext: {
         git: {
           repoUrl: gitlabRepoUrl,
-          branch: deployBranch,
+          branch: "main",
           repoDir: `projects/${slug}`,
         },
       },
       operationContext: {
         environmentVariables: {
           PULUMI_ORG: org,
-          STACK_NAME: username,
+          STACK_NAME: userKey,
         },
       },
       vcs: {
@@ -243,11 +204,11 @@ const stackDestroyAt = new Date(
 
 projectSlugs.forEach((slug, i) => {
   new pulumiservice.DeploymentSchedule(
-    `stack-ttl-${username}-${slug}`,
+    `stack-ttl-${userKey}-${slug}`,
     {
       organization: org,
       project: slug,
-      stack: username,
+      stack: userKey,
       pulumiOperation: "destroy",
       timestamp: stackDestroyAt,
     },
@@ -261,14 +222,14 @@ projectSlugs.forEach((slug, i) => {
 // =============================================================================
 
 const preventativeGroup = new pulumiservice.PolicyGroup(
-  `preventative-${username}`,
+  `preventative-${userKey}`,
   {
     organizationName: org,
-    name: `${username}-preventative`,
+    name: `${userKey}-preventative`,
     entityType: "stacks",
     mode: "preventative",
     stacks: projectSlugs.map((slug) => ({
-      name: username,
+      name: userKey,
       routingProject: slug,
     })),
     policyPacks: [],
@@ -281,14 +242,14 @@ const preventativeGroup = new pulumiservice.PolicyGroup(
 // =============================================================================
 
 const auditGroup = new pulumiservice.PolicyGroup(
-  `audit-${username}`,
+  `audit-${userKey}`,
   {
     organizationName: org,
-    name: `${username}-audit`,
+    name: `${userKey}-audit`,
     entityType: "stacks",
     mode: "audit",
     stacks: projectSlugs.map((slug) => ({
-      name: username,
+      name: userKey,
       routingProject: slug,
     })),
     policyPacks: [],
@@ -304,7 +265,7 @@ const auditGroup = new pulumiservice.PolicyGroup(
 // =============================================================================
 
 if (gitlabUserId !== undefined) {
-  new gitlab.ProjectMembership(`gitlab-member-${username}`, {
+  new gitlab.ProjectMembership(`gitlab-member-${userKey}`, {
     project: gitlabProjectId,
     userId: gitlabUserId,
     accessLevel: "developer",
@@ -320,7 +281,7 @@ const parentDestroyAt = new Date(
   Date.now() + parentStackTtlDays * 86400_000,
 ).toISOString();
 
-new pulumiservice.DeploymentSchedule(`self-ttl-${username}`, {
+new pulumiservice.DeploymentSchedule(`self-ttl-${userKey}`, {
   organization: org,
   project: pulumi.getProject(),
   stack: pulumi.getStack(),
@@ -332,9 +293,8 @@ new pulumiservice.DeploymentSchedule(`self-ttl-${username}`, {
 // Outputs
 // =============================================================================
 
-export const customRoleNameOut = customRoleName;
 export const preventativePolicyGroupName = preventativeGroup.name;
 export const auditPolicyGroupName = auditGroup.name;
-export const stackNames = projectSlugs.map((slug) => `${slug}/${username}`);
+export const stackNames = projectSlugs.map((slug) => `${slug}/${userKey}`);
 export const stackTtlScheduledDestroyAt = stackDestroyAt;
 export const selfTtlScheduledDestroyAt = parentDestroyAt;
