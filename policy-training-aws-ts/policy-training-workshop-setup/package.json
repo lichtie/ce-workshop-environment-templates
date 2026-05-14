@@ -8,7 +8,8 @@
     "@pulumi/aws": "^7.29.0",
     "@pulumi/gitlab": "^9.11.0",
     "@pulumi/pulumi": "^3.237.0",
-    "@pulumi/pulumiservice": "^0.40.0"
+    "@pulumi/pulumiservice": "^0.40.0",
+    "@pulumi/tls": "^5.3.1"
   },
   "devDependencies": {
     "@types/node": "^18",

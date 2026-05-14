@@ -2,6 +2,7 @@ import * as pulumi from "@pulumi/pulumi";
 import * as pulumiservice from "@pulumi/pulumiservice";
 import * as aws from "@pulumi/aws";
 import * as gitlab from "@pulumi/gitlab";
+import * as tls from "@pulumi/tls";
 
 // =============================================================================
 // Configuration
@@ -464,9 +465,16 @@ if (existingGitlabProjectId === undefined) {
 
 let oidcProvider: aws.iam.OpenIdConnectProvider | undefined;
 if (existingOidcProviderArn === undefined && existingAwsRoleArn === undefined) {
+  const oidcThumbprint = tls.getCertificateOutput({
+    url: "https://api.pulumi.com/oidc",
+  }).certificates[0].sha1Fingerprint;
+
+  oidcThumbprint.apply((t) => pulumi.log.info(`OIDC thumbprint: ${t}`));
+
   oidcProvider = new aws.iam.OpenIdConnectProvider("pulumi-oidc-provider", {
     url: "https://api.pulumi.com/oidc",
-    clientIdLists: [org],
+    clientIdLists: [`aws:${org}`],
+    thumbprintLists: [oidcThumbprint],
   });
 }
 
@@ -492,9 +500,8 @@ if (existingAwsRoleArn === undefined) {
             },
             Action: "sts:AssumeRoleWithWebIdentity",
             Condition: {
-              StringEquals: { "api.pulumi.com/oidc:aud": organization },
-              StringLike: {
-                "api.pulumi.com/oidc:sub": `pulumi:deploy:org:${organization}:project:*:stack:*:operation:*:scope:write`,
+              StringEquals: {
+                "api.pulumi.com/oidc:aud": `aws:${organization}`,
               },
             },
           },
@@ -742,6 +749,7 @@ if (existingAwsEscEnvironmentName === undefined) {
     "aws-integration",
     {
       organization: org,
+      project: "policies-workshop",
       name: "policies-wksp-aws-integration",
       yaml: awsEnvYaml,
     },
@@ -768,6 +776,7 @@ const allowedIpsEnv = new pulumiservice.Environment(
   "allowed-ips",
   {
     organization: org,
+    project: "policies-workshop",
     name: "policies-wksp-allowed-ips",
     yaml: new pulumi.asset.StringAsset(allowedIpsYaml),
   },

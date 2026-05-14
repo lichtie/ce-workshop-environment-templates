@@ -4,3 +4,5 @@
 **/*.pdf
 *.pdf
 **/.DS_STORE
+**/empty/
+**/Pulumi.*.yaml
