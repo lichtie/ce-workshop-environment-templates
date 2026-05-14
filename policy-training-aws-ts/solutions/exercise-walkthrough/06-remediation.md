@@ -30,7 +30,7 @@ Click into the preview run to see the full details. Both policy packs should sho
 
 This passing preview — with both policy packs green — is your second deliverable for the workshop.
 
-> If Neo's changes aren't quite right or don't fully resolve the violations, you can update the code manually. See [`solutions/artifacts/fixedcode.ts`](../../artifacts/fixedcode.ts) for a complete working implementation.
+> If Neo's changes aren't quite right or don't fully resolve the violations, you can update the code manually. See [`solutions/artifacts/fixedcode.ts`](../artifacts/fixedcode.ts) for a complete working implementation.
 
 ---
 
